@@ -86,9 +86,8 @@ jobs:
 
       - name: Install from wheel and import
         run: |
-          uv venv
-          uv pip install dist/*.whl
-          uv run python -c "import xtrace_sdk; print('Imported:', xtrace_sdk.__name__)"
+          uv pip install --system dist/*.whl
+          python -c "import xtrace_sdk; print('Imported:', xtrace_sdk.__name__)"
 
   publish:
     name: Publish to TestPyPI
