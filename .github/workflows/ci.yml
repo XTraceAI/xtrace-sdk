@@ -1,0 +1,94 @@
+name: CI (ruff + mypy + pytest)
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:  # lets you run it manually from the Actions tab
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Lint + type-check + offline unit tests ──────────────────────
+  qa:
+    name: Quality gates (lint, type-check, unit tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install package + all dev dependencies
+        run: uv sync --all-groups
+
+      - name: Ruff lint
+        run: uv run ruff check src/xtrace_sdk/ --output-format=github
+
+      # - name: Ruff format (check only)
+      #   run: uv run ruff format src/xtrace_sdk/ --check
+
+      - name: Mypy
+        run: uv run mypy src/xtrace_sdk/
+
+      - name: Pytest (test_paillier_lookup_encryption)
+        run: uv run pytest tests/x_vec/test_paillier_lookup_encryption.py
+
+      - name: Pytest (test_paillier_encryption)
+        run: uv run pytest tests/x_vec/test_paillier_encryption.py
+
+  # ── Integration tests (require XTrace API credentials) ──────────
+  integration:
+    name: Integration tests (meta search + hamming)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: qa                          # only run if qa passes
+    if: vars.XTRACE_INTEGRATION_TESTS == 'true'   # opt-in via repo variable
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install package + all dev dependencies
+        run: uv sync --all-groups
+
+      - name: Pytest (test_meta_search)
+        env:
+          XTRACE_API_KEY:   ${{ secrets.XTRACE_API_KEY }}
+          XTRACE_ADMIN_KEY: ${{ secrets.XTRACE_ADMIN_KEY }}
+          XTRACE_ORG_ID:    ${{ secrets.XTRACE_ORG_ID }}
+        run: uv run pytest tests/x_vec/test_meta_search.py -v
+
+      - name: Pytest (test_hamming_search)
+        env:
+          XTRACE_API_KEY:   ${{ secrets.XTRACE_API_KEY }}
+          XTRACE_ADMIN_KEY: ${{ secrets.XTRACE_ADMIN_KEY }}
+          XTRACE_ORG_ID:    ${{ secrets.XTRACE_ORG_ID }}
+        run: uv run pytest tests/x_vec/test_hamming_search.py -v

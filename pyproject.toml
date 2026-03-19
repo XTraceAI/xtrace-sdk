@@ -1,0 +1,111 @@
+[project]
+name = "xtrace-ai-sdk"
+version = "0.1.0"
+description = "Official Python SDK for XTrace — encrypted vector and memory"
+authors = [{ name = "XTrace"}]
+license = { text = "Apache-2.0" }
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.12.14",
+    "boto3>=1.39.4",
+    "gmpy2>=2.2.1",
+    "numpy>=2.3.1",
+    "openai>=1.96.0",
+    "pycryptodome>=3.23.0",
+    "tqdm>=4.67.1",
+    "typing-extensions>=4.14.1",
+    "python-dotenv>=1.1.1",
+    "msgpack"
+]
+classifiers = ["Programming Language :: Python :: 3"]
+
+[project.scripts]
+xtrace = "xtrace_sdk.cli.main:app"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/xtrace_sdk"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/xtrace_sdk", "README.md", "LICENSE", "pyproject.toml"]
+exclude = ["tests", "docs", "benchmarks"]
+
+[project.optional-dependencies]
+cli = [
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "questionary>=2.0.0",
+    "prompt-toolkit>=3.0.0",
+    "python-dotenv>=1.1.1",
+]
+dev = [
+    "ruff>=0.12.4",
+    "sentence-transformers>=5.0.0",
+    "sphinx>=8.2.3",
+    "pytest>=8.4.1",
+]
+embedding = [
+    "sentence-transformers>=5.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "furo>=2025.12.19",
+    "myst-parser>=4.0.0",
+    "mypy>=1.17.1",
+    "pre-commit>=4.3.0",
+    "ruff>=0.12.11",
+    "sphinx-autoapi>=3.6.0",
+    "sphinx-copybutton>=0.5.2",
+    "types-setuptools>=80.9.0.20250822",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".git", ".venv", "__pycache__", "build", "dist", "docs/_build", "examples", "benchmarks", "docs"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E","F","I","UP","B","SIM"]
+ignore = [
+  "E501",   # line too long
+  "I001",   # imports not sorted/formatted
+  "B027",   # empty methods in ABCs without @abstractmethod
+  "B010",   # setattr with constant
+  "UP032",  # prefer f-strings
+  "B007",   # unused loop variable
+  "UP015",  # unnecessary mode arg to open()
+  "UP035",  # typing.List/Dict/Type deprecated
+  "F401",   # unused imports
+  "UP006",  # prefer list/dict over typing.List/Dict
+  "SIM113", # use enumerate()
+  "F403",   # star import used
+  "F405",   # names from star import may be undefined
+  "UP030",  # implicit format positional fields
+  "F841",   # assigned but unused
+  "F601",   # duplicate dict keys
+  "E712",   # comparison to True/False
+  "SIM108", # prefer ternary
+  "E713",   # use `not in`
+  "F811",   # redefinition
+  "SIM105", # use join()
+  "B904",
+]
+
+[tool.mypy]
+mypy_path = "."
+namespace_packages = true
+python_version = "3.11"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+ignore_missing_imports = true
+show_error_codes = true
+pretty = true
+strict_equality = true

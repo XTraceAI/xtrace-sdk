@@ -1,0 +1,184 @@
+/* =========================================================
+   XTrace SDK – colour palette aligned with xtrace.ai
+   Primary dark: #0a0d1e  |  Pink accent: #f3d6fa
+   Blue accent:  #c4d8ff  |  Brand purple: between both
+   ========================================================= */
+
+/* ----------------------------------------------------------
+   Brand tokens
+   ---------------------------------------------------------- */
+:root {
+    --color-brand-primary:          #6d28d9;   /* purple bridging pink + blue */
+    --color-brand-content:          #5b21b6;   /* slightly deeper for text/links */
+
+    --color-inline-code-background: #faf5ff;   /* lightest purple tint */
+    --color-inline-code-border:     #ddd6fe;
+
+    --color-admonition-background:  #fdfbff;
+
+
+    --xt-navy:   #0a0d1e;
+    --xt-pink:   #f3d6fa;
+    --xt-blue:   #c4d8ff;
+    --xt-purple: #6d28d9;
+}
+
+[data-theme="dark"] {
+    /* Brand */
+    --color-brand-primary:          #a78bfa;   /* violet-400 — readable on dark */
+    --color-brand-content:          #c4b5fd;   /* violet-300 */
+
+    /* Furo background variables — override every panel at the source */
+    --color-background-primary:     #0a0d1e;
+    --color-background-secondary:   #0d0f24;
+    --color-background-hover:       #12102e;
+    --color-background-hover--transparent: #12102e00;
+    --color-background-border:      #2e2a50;
+    --color-background-item:        #12102e;
+
+    /* Foreground */
+    --color-foreground-primary:     #e9d5ff;
+    --color-foreground-secondary:   #a78bfa;
+    --color-foreground-muted:       #7c6faa;
+    --color-foreground-border:      #2e2a50;
+
+    /* Code */
+    --color-code-background:        #12102a;
+    --color-code-foreground:        #e9d5ff;
+    --color-inline-code-background: #12102a;
+    --color-inline-code-border:     #3b2f6e;
+
+    /* Admonitions */
+    --color-admonition-background:  #0d0f24;
+
+    /* Announced / highlighted */
+    --color-highlight-on-target:    #1e1540;
+}
+
+/* Light-mode base — soft off-white across all panels */
+body,
+article[role="main"],
+.sidebar-drawer,
+.toc-drawer {
+    background-color: #f5f4fa;
+}
+
+/* ----------------------------------------------------------
+   Inline code
+   ---------------------------------------------------------- */
+code.literal,
+code.docutils {
+    background   : var(--color-inline-code-background);
+    border       : 1px solid var(--color-inline-code-border);
+    border-radius: 4px;
+    padding      : 1px 5px;
+    font-size    : 0.875em;
+    color        : var(--color-brand-content);
+    font-weight  : 500;
+}
+
+/* ----------------------------------------------------------
+   Code blocks — left bar in brand purple
+   ---------------------------------------------------------- */
+div.highlight {
+    border-left  : 3px solid var(--xt-purple);
+    border-radius: 0 6px 6px 0;
+}
+
+[data-theme="dark"] div.highlight {
+    border-left-color: var(--color-brand-primary);
+}
+
+/* ----------------------------------------------------------
+   Admonitions — pink/blue/purple family
+   ---------------------------------------------------------- */
+.admonition { border-radius: 6px; border-left-width: 4px; }
+
+.admonition.note    .admonition-title { background: #ede9fe; color: #4c1d95; }  /* purple */
+.admonition.tip     .admonition-title { background: #e0f2fe; color: #075985; }  /* blue  */
+.admonition.warning .admonition-title { background: #fce7f3; color: #9d174d; }  /* pink  */
+.admonition.danger  .admonition-title { background: #ffe4e6; color: #881337; }  /* rose  */
+
+[data-theme="dark"] .admonition.note    .admonition-title { background: #1e1540; color: #c4b5fd; }
+[data-theme="dark"] .admonition.tip     .admonition-title { background: #0c1f35; color: #7dd3fc; }
+[data-theme="dark"] .admonition.warning .admonition-title { background: #2d1030; color: #f0abfc; }
+[data-theme="dark"] .admonition.danger  .admonition-title { background: #2d0a14; color: #fda4af; }
+
+/* ----------------------------------------------------------
+   API signatures — navy-tinted background, purple left bar
+   ---------------------------------------------------------- */
+dt.sig {
+    background   : #f5f3ff;
+    border-left  : 3px solid var(--xt-purple);
+    border-radius: 0 4px 4px 0;
+    padding      : 6px 12px;
+    margin-bottom: 4px;
+}
+
+[data-theme="dark"] dt.sig {
+    background      : #13102c;
+    border-left-color: var(--color-brand-primary);
+}
+
+dt.sig .n  { color: #5b21b6; }
+dt.sig .p  { color: #888;    }
+dt.sig .o  { color: #a855f7; }
+
+[data-theme="dark"] dt.sig .n { color: #c4b5fd; }
+[data-theme="dark"] dt.sig .o { color: #e879f9; }
+
+/* ----------------------------------------------------------
+   Headings — navy for h1, subtle purple underline
+   ---------------------------------------------------------- */
+h1 {
+    color         : var(--xt-navy);
+    border-bottom : 2px solid var(--xt-purple);
+    padding-bottom: 6px;
+}
+h2 {
+    border-bottom : 1px solid #ddd6fe;
+    padding-bottom: 4px;
+}
+
+[data-theme="dark"] h1 { color: #e9d5ff; border-bottom-color: var(--color-brand-primary); }
+[data-theme="dark"] h2 { border-bottom-color: #2e1f5e; }
+
+/* ----------------------------------------------------------
+   Tables
+   ---------------------------------------------------------- */
+table.docutils th.head {
+    background-color: #0a0d1e;
+    color           : #fff;
+    font-weight     : 600;
+    padding         : 8px 12px;
+    border          : none;
+}
+
+table.docutils tr.row-odd  td { background-color: #f5f4fa; }
+table.docutils tr.row-even td { background-color: #e8e4f5; }
+
+table.docutils td, table.docutils th {
+    border-color: #d0cce8;
+    padding     : 7px 12px;
+}
+
+[data-theme="dark"] table.docutils th.head {
+    background-color: #1a1d3d;
+    color           : #e9d5ff;
+}
+[data-theme="dark"] table.docutils tr.row-odd  td { background-color: #0a0d1e; }
+[data-theme="dark"] table.docutils tr.row-even td { background-color: #12102e; }
+[data-theme="dark"] table.docutils td, [data-theme="dark"] table.docutils th {
+    border-color: #2e2a50;
+}
+
+/* ----------------------------------------------------------
+   Sidebar brand (project name + version)
+   ---------------------------------------------------------- */
+.sidebar-brand-text { color: var(--xt-navy); font-weight: 700; }
+
+[data-theme="dark"] .sidebar-brand-text        { color: #e9d5ff; }
+[data-theme="dark"] .sidebar-brand-tagline      { color: #a78bfa; }
+
+/* Furo renders version below the name in .sidebar-brand */
+[data-theme="dark"] .sidebar-brand              { color: #e9d5ff; }
