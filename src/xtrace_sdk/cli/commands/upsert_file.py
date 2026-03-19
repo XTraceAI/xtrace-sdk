@@ -167,7 +167,7 @@ def upsert_file(
                         embedding_model.bin_embed(c["chunk_content"]) for c in collection
                     ]))
                 vectors = asyncio.run(_embed_all())
-                index, db = dl.load_data_from_memory(collection, vectors, disable_progress=True)  # type: ignore[arg-type]
+                index, db = asyncio.run(dl.load_data_from_memory(collection, vectors, disable_progress=True))  # type: ignore[arg-type]
             except Exception as e:
                 msg, code = extract_server_error(e)
                 console.print(f"[red]Encryption failed{f' ({code})' if code is not None else ''}:[/] {msg or e}")

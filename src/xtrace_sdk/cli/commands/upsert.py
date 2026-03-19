@@ -148,11 +148,11 @@ def upsert(
                     ]))
                 vectors = [[float(x) for x in emb] for emb in asyncio.run(_embed_all())]
 
-                index, db = dl.load_data_from_memory(
+                index, db = asyncio.run(dl.load_data_from_memory(
                     collection,  # type: ignore[arg-type]
                     vectors,
                     disable_progress=True
-                )
+                ))
             except Exception as e:
                 msg, code = extract_server_error(e)
                 console.print(

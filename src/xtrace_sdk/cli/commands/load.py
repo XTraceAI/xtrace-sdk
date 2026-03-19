@@ -220,7 +220,7 @@ def load(
             ]))
         vectors = asyncio.run(_embed_all())
 
-        index, db = dl.load_data_from_memory(collection, vectors)  # type: ignore[arg-type]
+        index, db = asyncio.run(dl.load_data_from_memory(collection, vectors))  # type: ignore[arg-type]
         console.print(Rule(style="dim"))
 
         # upload

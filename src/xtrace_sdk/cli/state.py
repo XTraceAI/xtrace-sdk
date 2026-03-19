@@ -9,7 +9,7 @@ from pathlib import Path as _Path
 try:
     from rich.console import Console
 except Exception:
-    Console = None  # type: ignore[assignment,misc]
+    Console = None
 
 # --- SESSION CACHE (in-memory for current process only) -----------------------
 _SESSION: dict[str, Any] = {}  # NEW
