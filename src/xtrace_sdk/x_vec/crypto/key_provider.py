@@ -52,9 +52,10 @@ class PassphraseKeyProvider:
 
     def __init__(self, passphrase: str, salt: bytes | None = None) -> None:
         self._salt = salt or _DEFAULT_SALT
+        _pw: Any = passphrase.encode("utf-8")
+        _sl: Any = self._salt
         self._key = cast(bytes, _scrypt_raw(
-            passphrase.encode("utf-8"), self._salt,
-            key_len=_KEY_LEN, N=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P,
+            _pw, _sl, key_len=_KEY_LEN, N=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P,
         ))
 
     def get_key(self) -> bytes:

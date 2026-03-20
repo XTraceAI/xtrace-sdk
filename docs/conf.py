@@ -54,12 +54,12 @@ autoapi_keep_files = False
 autoapi_ignore = [
     "*/xtrace_types*",   # pure type defs — TypedDict fields trip up autoapi RST rendering
     "*/cli/*",           # CLI is internal tooling; relative imports break autoapi parsing
-    "*/integrations/__init__*",  # re-exports XTraceIntegration — causes duplicate cross-ref targets
 ]
 autoapi_add_toctree_entry = True      # auto-injects into the last toctree in index.rst (API Reference)
 suppress_warnings = [
     "autoapi.python_import_resolution",  # expected: xtrace_types excluded from autoapi
     "myst.header",                        # CHANGELOG.md starts at H2 by design (RST page provides H1)
+    "ref.python",                         # XTraceIntegration re-exported in __init__.py — dual cross-ref target is fine
 ]
 
 templates_path = ['_templates']
