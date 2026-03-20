@@ -54,6 +54,7 @@ autoapi_keep_files = False
 autoapi_ignore = [
     "*/xtrace_types*",   # pure type defs — TypedDict fields trip up autoapi RST rendering
     "*/cli/*",           # CLI is internal tooling; relative imports break autoapi parsing
+    "*/integrations/__init__*",  # re-exports XTraceIntegration — causes duplicate cross-ref targets
 ]
 autoapi_add_toctree_entry = True      # auto-injects into the last toctree in index.rst (API Reference)
 suppress_warnings = [

@@ -49,7 +49,7 @@ class AESClient:
         cipher = AES.new(self._key, AES.MODE_GCM)
         ciphertext, tag = cipher.encrypt_and_digest(raw_bytes)
         # Format: nonce (16) + tag (16) + ciphertext
-        return base64.b64encode(cipher.nonce + tag + ciphertext)
+        return base64.b64encode(bytes(cipher.nonce) + tag + ciphertext)
 
     def decrypt(self, enc: bytes) -> str:
         """AES-GCM decrypt a ciphertext.

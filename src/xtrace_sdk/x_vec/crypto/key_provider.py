@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
-from Crypto.Protocol.KDF import scrypt
+from Crypto.Protocol.KDF import scrypt as _scrypt_raw
 
 _SCRYPT_N = 2**14
 _SCRYPT_R = 8
@@ -52,10 +52,10 @@ class PassphraseKeyProvider:
 
     def __init__(self, passphrase: str, salt: bytes | None = None) -> None:
         self._salt = salt or _DEFAULT_SALT
-        self._key: bytes = scrypt(
+        self._key = cast(bytes, _scrypt_raw(
             passphrase.encode("utf-8"), self._salt,
             key_len=_KEY_LEN, N=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P,
-        )
+        ))
 
     def get_key(self) -> bytes:
         return self._key

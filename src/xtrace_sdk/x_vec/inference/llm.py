@@ -1,6 +1,7 @@
 from typing import Callable
 
 from openai import OpenAI
+from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
 
 def _default_prompt_template(context: str, query: str) -> str:
@@ -73,10 +74,13 @@ class InferenceClient:
         )
 
         if not stream:
+            assert isinstance(res, ChatCompletion)
             return res.choices[0].message.content or ""
 
         response = ""
         for chunk in res:
+            if not isinstance(chunk, ChatCompletionChunk):
+                continue
             if len(chunk.choices) == 0:
                 continue
             if chunk.choices[0].delta.content is not None:
