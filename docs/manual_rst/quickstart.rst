@@ -67,21 +67,31 @@ Create a knowledge base from the dashboard, or via the CLI after running ``xtrac
 Step 1 — Create an execution context
 -------------------------------------
 
-The execution context is the cryptographic core of the system. Create it once and save it to
-disk. In future sessions you reload it with your passphrase instead of generating a new one.
+The execution context is the cryptographic core of the system. It holds a Paillier key pair
+and an AES key, protected by a **key provider**. Create it once and save it to disk. In
+future sessions you reload it with your key provider instead of generating a new one.
 
 .. code-block:: python
 
     from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+    from xtrace_sdk.x_vec.crypto.key_provider import PassphraseKeyProvider
+
+    provider = PassphraseKeyProvider("your-secret-passphrase")
 
     ctx = ExecutionContext.create(
-        passphrase="your-secret-passphrase",
+        key_provider=provider,
         homomorphic_client_type="paillier_lookup",  # fastest CPU option
         embedding_length=512,                        # must match your embedding model
         key_len=1024,                                # Paillier key size in bits (≥ 1024)
         path="data/exec_context",                    # saved to disk immediately
     )
     print("Context ID:", ctx.id)  # note this — you need it to reload from XTrace
+
+.. note::
+
+    For production workloads, ``AWSKMSKeyProvider`` provides envelope encryption via AWS
+    KMS — the data encryption key is generated and wrapped by KMS and never persisted in
+    plaintext. See :doc:`configuration` for setup details.
 
 To reload in a future session:
 
@@ -98,7 +108,7 @@ You can also back the context up to XTrace so you can restore it from any machin
     from xtrace_sdk.integrations.xtrace import XTraceIntegration
 
     xtrace = XTraceIntegration(org_id="your_org_id", api_key="your_api_key")
-    await ctx.save_to_remote(xtrace)  # secret key is AES-encrypted before upload
+    await ctx.save_to_remote(xtrace)  # secret key is encrypted by the key provider before upload
 
     # Restore
     ctx = await ExecutionContext.load_from_remote("your-secret-passphrase", ctx.id, xtrace)

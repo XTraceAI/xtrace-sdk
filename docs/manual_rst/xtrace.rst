@@ -18,7 +18,8 @@ Understanding what XTrace can and cannot see is the core guarantee of this SDK.
      - How it is protected
    * - Chunk content
      - AES-encrypted on the client before upload. The server stores only ciphertext.
-       The AES key is derived from your passphrase and never leaves your environment.
+       The AES key is supplied by a key provider (passphrase-derived or AWS KMS envelope encryption)
+       and never leaves your environment.
    * - Embedding vectors
      - Encrypted with Paillier homomorphic encryption on the client before being sent.
        The server computes nearest-neighbor Hamming distances directly on the ciphertexts
@@ -50,29 +51,79 @@ Execution Context
 -----------------
 
 The ``ExecutionContext`` bundles the Paillier key pair and the AES key under a single
-passphrase-protected object. When stored remotely on XTrace
-(``execution_context.save_to_remote(xtrace)``), only the following is transmitted:
+protected object. A **key provider** controls how the AES key is generated and protected.
+
+The SDK ships two providers:
+
+* ``PassphraseKeyProvider`` — derives a 256-bit AES key from a passphrase via scrypt.
+  Simple and self-contained — no cloud dependencies.
+* ``AWSKMSKeyProvider`` — generates a data encryption key (DEK) via AWS KMS envelope
+  encryption. The DEK is never stored in plaintext — only the KMS-wrapped ciphertext
+  (EDEK) is persisted.
+
+When stored remotely on XTrace (``execution_context.save_to_remote(xtrace)``), only the
+following is transmitted:
 
 * The **public key** in plaintext (intentional — it is not secret).
-* The **secret key** AES-encrypted with your passphrase.
+* The **secret key** encrypted with the AES key supplied by the key provider.
 * Non-sensitive configuration (key length, embedding length).
 
-The passphrase is never transmitted. Without it, the stored blob cannot be decrypted —
-XTrace has no way to recover the secret key and therefore cannot decrypt your chunk content
-or vectors.
+Neither your passphrase nor your KMS plaintext DEK are ever transmitted. Without the
+corresponding key provider, the stored blob cannot be decrypted — XTrace cannot
+recover the secret key and cannot decrypt your chunk content or vectors.
 
-This means it is safe to store your execution context on XTrace as a convenience backup.
-Losing the remote copy is an inconvenience, but it does not expose your data.
+See :doc:`configuration` for the full key provider reference.
+
+
+.. rubric:: Passphrase-based context
 
 .. code-block:: python
 
-    # Save to XTrace (secret key is encrypted with your passphrase before upload)
-    await execution_context.save_to_remote(xtrace)
+    from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+    from xtrace_sdk.x_vec.crypto.key_provider import PassphraseKeyProvider
 
-    # Restore — passphrase is required and never sent to XTrace
-    execution_context = await ExecutionContext.load_from_remote(
-        "your-secret-passphrase", "ctx_id", xtrace
+    provider = PassphraseKeyProvider("your-secret-passphrase")
+
+    ctx = ExecutionContext.create(
+        key_provider=provider,
+        homomorphic_client_type="paillier_lookup",
+        embedding_length=512,
+        key_len=1024,
+        path="data/exec_context",          # optional: save immediately
     )
+
+    # Restore from disk
+    ctx = ExecutionContext.load_from_disk("your-secret-passphrase", "data/exec_context")
+
+    # Or save/restore via XTrace
+    await ctx.save_to_remote(xtrace)
+    ctx = await ExecutionContext.load_from_remote("your-secret-passphrase", ctx.id, xtrace)
+
+
+.. rubric:: AWS KMS-based context
+
+.. code-block:: python
+
+    import boto3
+    from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+    from xtrace_sdk.x_vec.crypto.key_provider import AWSKMSKeyProvider
+
+    kms = boto3.client("kms")
+    provider = AWSKMSKeyProvider.create(kms, "alias/xtrace")
+
+    ctx = ExecutionContext.create(
+        key_provider=provider,
+        homomorphic_client_type="paillier_lookup",
+        embedding_length=512,
+        key_len=1024,
+    )
+
+    # Restore: reconstruct the provider from the stored EDEK
+    import base64, json
+    with open("data/exec_context") as f:
+        edek = base64.b64decode(json.load(f)["wrapped_key"])
+    provider = AWSKMSKeyProvider.from_wrapped(edek, kms_client=kms, key_id="alias/xtrace")
+    ctx = ExecutionContext.load_from_disk(path="data/exec_context", key_provider=provider)
 
 
 Connecting
@@ -202,12 +253,18 @@ calling the low-level API directly:
 
 .. code-block:: python
 
-    # Save to XTrace (preferred — secret key is AES-encrypted before upload)
+    # Save to XTrace (preferred — secret key is encrypted by the key provider before upload)
     ctx_id = await execution_context.save_to_remote(xtrace)
 
-    # Restore from XTrace
+    # Restore from XTrace (passphrase-based)
     execution_context = await ExecutionContext.load_from_remote(
         "your-secret-passphrase", ctx_id, xtrace
+    )
+
+    # Restore from XTrace (KMS-based — reconstruct the provider first)
+    provider = AWSKMSKeyProvider.from_wrapped(edek, kms_client=kms, key_id="alias/xtrace")
+    execution_context = await ExecutionContext.load_from_remote(
+        key_provider=provider, context_id=ctx_id, integration=xtrace
     )
 
     # List all stored context IDs for your org
