@@ -1,7 +1,6 @@
 import json
-import pickle as pkl
 
-from xtrace_sdk.x_vec.crypto.encryption.goldwasser_micali import Goldwasser_Micali
+from xtrace_sdk.x_vec.crypto.encryption.goldwasser_micali import GoldwasserMicali
 
 
 class GoldwasserMicaliClient:
@@ -23,9 +22,9 @@ class GoldwasserMicaliClient:
         """
 
         if 2*embd_len % chunk_num != 0:
-             raise Exception("chunk_num must divide 2*embd_len")
+                 raise ValueError("chunk_num must divide 2*embd_len")
 
-        self.keys = Goldwasser_Micali.key_gen(key_len)
+        self.keys = GoldwasserMicali.key_gen(key_len)
         self.embd_len = embd_len
         self.chunk_num = chunk_num
         self.chunk_len = self.embd_len*2 // self.chunk_num
@@ -47,22 +46,22 @@ class GoldwasserMicaliClient:
         return json.dumps(self.keys['sk'])
 
     def dump_pk(self, file_path: str) -> None:
-        """Save the public key to disk using pickle.
+        """Save the public key to disk as JSON.
 
         :param file_path: Destination file path.
         :type file_path: str
         """
-        with open(file_path,"wb") as f:
-            pkl.dump(self.keys['pk'],f)
+        with open(file_path, "w") as f:
+            json.dump(self.keys['pk'], f)
 
     def dump_sk(self, file_path: str) -> None:
-        """Save the secret key to disk using pickle.
+        """Save the secret key to disk as JSON.
 
         :param file_path: Destination file path.
         :type file_path: str
         """
-        with open(file_path,"wb") as f:
-            pkl.dump(self.keys['sk'],f)
+        with open(file_path, "w") as f:
+            json.dump(self.keys['sk'], f)
 
     def id2power(self, id_: int) -> tuple[int, int]:
         """Return the chunk index and bit position for a given embedding entry index.
@@ -84,7 +83,7 @@ class GoldwasserMicaliClient:
         """
 
 
-        return Goldwasser_Micali.encrypt([int(embd[i]) for i in range(self.embd_len)], self.keys['pk'])
+        return GoldwasserMicali.encrypt([int(embd[i]) for i in range(self.embd_len)], self.keys['pk'])
 
     def decode_hamming_client(self, cipher: list[int]) -> int:
         """Decrypt an encoded Hamming distance returned by the server.
@@ -95,4 +94,4 @@ class GoldwasserMicaliClient:
         :rtype: int
         """
 
-        return sum(Goldwasser_Micali.decrypt(cipher, self.keys))
+        return sum(GoldwasserMicali.decrypt(cipher, self.keys))

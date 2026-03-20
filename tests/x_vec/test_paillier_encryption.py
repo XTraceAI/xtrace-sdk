@@ -1,7 +1,10 @@
+import random
+
 import pytest
 from xtrace_sdk.x_vec.crypto.encryption import paillier
 from xtrace_sdk.x_vec.utils.xtrace_types import PaillierKeyPair
-import random
+
+random.seed(42)
 
 
 @pytest.fixture
@@ -22,14 +25,14 @@ def test_encrypt_and_decrypt(key_pair: PaillierKeyPair, random_numbers: list) ->
         decrypted_num = paillier.Paillier.decrypt(ciphertext, key_pair)
         assert decrypted_num == num, f"Decrypted number {decrypted_num} does not match original number {num}."
 
-def test_addition_of_ciphers(key_pair: PaillierKeyPair, random_numbers: list) -> None:
+def test_addition_of_ciphers(key_pair: PaillierKeyPair, random_numbers: list, key_len: int) -> None:
     """Test the addition of encrypted numbers."""
     encrypted_numbers = [paillier.Paillier.encrypt(num, key_pair['pk']) for num in random_numbers]
     
     # Add the encrypted numbers
 
     for i in range(len(encrypted_numbers)):
-        random_offset = random.randint(1, 2**1024)
+        random_offset = random.randint(1, 2**key_len)
         enc_offset = paillier.Paillier.encrypt(random_offset, key_pair['pk'])
         encrypted_sum = paillier.Paillier.add(enc_offset, encrypted_numbers[i], key_pair['pk'])
         # Decrypt the sum

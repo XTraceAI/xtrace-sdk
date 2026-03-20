@@ -128,21 +128,24 @@ class DataLoader:
             and ``encrypted_db`` contains chunks with AES-encrypted content.
         :rtype: tuple[list[list[int]], EncryptedDB]
         """
-        assert len(chunks) == len(vectors), "Number of chunks and vectors must be the same"
+        if len(chunks) != len(vectors):
+            raise ValueError("Number of chunks and vectors must be the same")
         index = []
         encrypted_db = []
         for i in tqdm(range(len(chunks)), disable=disable_progress, desc="Encrypting", unit="chunk"):
             vec = vectors[i]
             if inspect.isawaitable(vec):
                 vec = await vec
-            assert len(vec) == self.execution_context.embed_len(), (
-                f"Vector dimension {len(vec)} does not match "
-                f"homomorphic client dimension {self.execution_context.embed_len()}"
-            )
+            if len(vec) != self.execution_context.embed_len():
+                raise ValueError(
+                    f"Vector dimension {len(vec)} does not match "
+                    f"homomorphic client dimension {self.execution_context.embed_len()}"
+                )
             bin_vector: list[int] = Embedding.float_2_bin(vec).tolist()
             index.append(self.execution_context.homomorphic.encrypt_vec_one(bin_vector))
-            chunks[i]["chunk_content"] = self.execution_context.aes.encrypt(chunks[i]["chunk_content"])
-            encrypted_db.append(chunks[i])
+            enc_chunk = dict(chunks[i])
+            enc_chunk["chunk_content"] = self.execution_context.aes.encrypt(chunks[i]["chunk_content"])
+            encrypted_db.append(enc_chunk)
         return index, encrypted_db
 
     async def load_data_from_memory_batch(
@@ -168,7 +171,8 @@ class DataLoader:
             and ``encrypted_db`` contains chunks with AES-encrypted content.
         :rtype: tuple[list[list[int]], EncryptedDB]
         """
-        assert len(chunks) == len(vectors), "Number of chunks and vectors must be the same"
+        if len(chunks) != len(vectors):
+            raise ValueError("Number of chunks and vectors must be the same")
         encrypted_db = []
         bin_vecs = []
 
@@ -177,8 +181,9 @@ class DataLoader:
             vec = vectors[i]
             if inspect.isawaitable(vec):
                 vec = await vec
-            chunks[i]["chunk_content"] = self.execution_context.aes.encrypt(chunks[i]["chunk_content"])
-            encrypted_db.append(chunks[i])
+            enc_chunk = dict(chunks[i])
+            enc_chunk["chunk_content"] = self.execution_context.aes.encrypt(chunks[i]["chunk_content"])
+            encrypted_db.append(enc_chunk)
             bin_vecs.append(Embedding.float_2_bin(vec))
         _log.info("ingest_aes_encrypt_done", extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(chunks)})
 

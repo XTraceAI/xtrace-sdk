@@ -121,13 +121,15 @@ class PaillierCPU:
 
     def stringify_pk(self) -> str:
         """Return a JSON string representation of the public key."""
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         pk = self.keys['pk']
         return json.dumps({'g': str(pk['g']), 'n': str(pk['n']), 'n_squared': str(pk['n_squared'])})
 
     def stringify_sk(self) -> str:
         """Return a JSON string representation of the secret key."""
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         sk = self.keys['sk']
         return json.dumps({'phi': str(sk['phi']), 'inv': str(sk['inv'])})
 
@@ -182,11 +184,14 @@ class PaillierCPU:
         :return: List of Paillier ciphertexts (one per chunk).
         :rtype: PaillierEncryptedNumber
         """
-        assert len(embd) == self.embed_len
-        assert self.keys is not None, "Keys not initialized"
+        if len(embd) != self.embed_len:
+            raise ValueError(f"Embedding length {len(embd)} does not match expected {self.embed_len}")
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         padded_embd = []
         for i in range(self.embed_len):
-            assert embd[i] in [0, 1], "Embedding vector must be binary"
+            if embd[i] not in (0, 1):
+                raise ValueError(f"Embedding vector must be binary, got {embd[i]} at index {i}")
             padded_embd += ['0', str(embd[i])]
         int_repr = [
             gmpy2.mpz(int("".join(padded_embd[i * self.chunk_len:(i + 1) * self.chunk_len]), 2))
@@ -202,7 +207,8 @@ class PaillierCPU:
         :return: Plain-text Hamming distance.
         :rtype: int
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         de_c = [Paillier.decrypt(int.from_bytes(c, byteorder='little') if isinstance(c, bytes) else c, self.keys) for c in cipher]
         bin_c_truncated = [f"{c:b}" for c in de_c]
         bin_c_str = ""

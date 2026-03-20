@@ -62,7 +62,8 @@ class Embedding:
         float_embd: np.ndarray
 
         if self.provider == "ollama":
-            assert self.url is not None
+            if self.url is None:
+                raise RuntimeError("URL not configured for ollama provider")
             async with aiohttp.ClientSession() as session, \
                     session.post(self.url, json={"model": self.model_name, "prompt": text}) as resp:
                 resp.raise_for_status()
@@ -70,7 +71,8 @@ class Embedding:
                 float_embd = np.asarray(data.get("embedding", []))
 
         elif self.provider == "openai":
-            assert self.url is not None
+            if self.url is None:
+                raise RuntimeError("URL not configured for openai provider")
             async with aiohttp.ClientSession() as session, \
                     session.post(
                         self.url,
@@ -83,6 +85,9 @@ class Embedding:
 
         elif self.provider == "sentence_transformer":
             float_embd = np.asarray(self.model.encode(text).reshape((1, self.dim))[0])
+
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
 
         if float_embd.shape[0] != self.dim:
             raise ValueError(f"Expected embedding dimension {self.dim}, but got {float_embd.shape[0]}")

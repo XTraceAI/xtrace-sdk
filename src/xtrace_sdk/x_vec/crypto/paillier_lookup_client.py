@@ -5,7 +5,7 @@ import gmpy2
 
 from typing import Optional, Union
 
-from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import Paillier_Lookup
+from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import PaillierLookup
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.utils.xtrace_types import PaillierEncryptedNumber, PaillierLookupKeyPair
 
@@ -144,7 +144,7 @@ class PaillierLookupCPU:
 
         self.keys: PaillierLookupKeyPair | None
         if not skip_key_gen:
-            self.keys = Paillier_Lookup.key_gen(key_len, alpha_len=self.alpha_len)
+            self.keys = PaillierLookup.key_gen(key_len, alpha_len=self.alpha_len)
         else:
             self.keys = None
 
@@ -158,7 +158,8 @@ class PaillierLookupCPU:
         :return: stringified public key
         :rtype: str
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         pk = self.keys['pk']
         return json.dumps({'g': int(pk['g']), 'n': int(pk['n']), 'n_squared': int(pk['n_squared']), 'g_n': int(pk['g_n'])})
 
@@ -168,7 +169,8 @@ class PaillierLookupCPU:
         :return: stringified secret key
         :rtype: str
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         sk = self.keys['sk']
         return json.dumps({'phi': int(sk['phi']), 'a': int(sk['a']), 'g_a_inv': int(sk['g_a_inv'])})
 
@@ -178,7 +180,8 @@ class PaillierLookupCPU:
         :return: stringified crypto context
         :rtype: str
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         str_config = {}
         str_config['message_chunks'] = int(self.keys['message_chunks'])
         str_config['alpha_len'] = self.alpha_len
@@ -188,8 +191,9 @@ class PaillierLookupCPU:
     
     def dump_tables(self) -> dict:
         """Dump g_table and noise_table for caching"""
-        assert self.keys is not None, "Keys not initialized"
-        return Paillier_Lookup.dump_tables(self.keys)
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
+        return PaillierLookup.dump_tables(self.keys)
 
     def load_stringified_keys(self, pk: str, sk: str) -> None:
         """load stringified keys
@@ -226,18 +230,19 @@ class PaillierLookupCPU:
         :type context: str
         :param precomputed_tables: optional dict containing 'g_table' and 'noise_table' to skip recomputation
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         g = self.keys['pk']['g']
         n = self.keys['pk']['n']
         key_len = config['key_len']
         
         if precomputed_tables:
-            g_table, noise_table = Paillier_Lookup.load_tables(precomputed_tables)
+            g_table, noise_table = PaillierLookup.load_tables(precomputed_tables)
             self.keys['g_table'] = g_table
             self.keys['noise_table'] = noise_table
         else:
-            self.keys['g_table'] = Paillier_Lookup.precompute_g_table(g, n, key_len)
-            self.keys['noise_table'] = Paillier_Lookup.precompute_noise_table(g, n)
+            self.keys['g_table'] = PaillierLookup.precompute_g_table(g, n, key_len)
+            self.keys['noise_table'] = PaillierLookup.precompute_noise_table(g, n)
             
         self.keys['message_chunks'] = int(config['message_chunks'])
 
@@ -257,27 +262,31 @@ class PaillierLookupCPU:
         :return: return a list of length chunk_num contaning PaillierEncryptedNumber
         :rtype: PaillierEncryptedNumber
         """
-        assert self.keys is not None, "Keys not initialized"
-        assert len(embd) == self.embed_len
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
+        if len(embd) != self.embed_len:
+            raise ValueError(f"Embedding length {len(embd)} does not match expected {self.embed_len}")
         padded_embd = []
 
         for i in range(self.embed_len):
-            assert embd[i] in [0,1], "Embedding vector must be binary"
+            if embd[i] not in (0, 1):
+                raise ValueError(f"Embedding vector must be binary, got {embd[i]} at index {i}")
             padded_embd += ['0',str(embd[i])]
 
         int_repr =  [int("".join(padded_embd[i*self.chunk_len : (i+1)*self.chunk_len]),2) for i in range(self.chunk_num)]
-        return [Paillier_Lookup.encrypt(i,self.keys['pk'],self.keys['g_table'], self.keys['noise_table'], self.keys['message_chunks']) for i in int_repr]
+        return [PaillierLookup.encrypt(i,self.keys['pk'],self.keys['g_table'], self.keys['noise_table'], self.keys['message_chunks']) for i in int_repr]
 
     def decode_hamming_client(self, cipher: list[int | bytes]) -> int:
         """Given a PaillierEncryptedNumber returned from server, calculate the hamming distance encoded
         """
-        assert self.keys is not None, "Keys not initialized"
+        if self.keys is None:
+            raise RuntimeError("Keys not initialized")
         # cipher is a list of chunks
         de_c = []
         for c in cipher:
             if isinstance(c, bytes):
                 c = int.from_bytes(c, byteorder='little')
-            de_c.append(Paillier_Lookup.decrypt(c, self.keys))
+            de_c.append(PaillierLookup.decrypt(c, self.keys))
 
         bin_c_truncated: list[str] = [f"{d:b}" for d in de_c]
         bin_c_str = ""
@@ -525,14 +534,15 @@ class PaillierLookupClient(HammingClientBase):
                 # CPU load_config expects raw python int formats:
                 # g_table: dict[str/int, list[int]], noise_table: list[int]
                 # We need to un-flatten the hex strings back into this format
-                from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import PAILLIER_MSG_TABLE_SIZE  # type: ignore[attr-defined]
-                
+                from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import MSG_BITS
+                msg_table_size = 2**MSG_BITS
+
                 flat_g = tables.get("g_table", [])
                 g_dict = {}
                 # Recover dict structure by chunking the flat list
-                for i in range(0, len(flat_g), PAILLIER_MSG_TABLE_SIZE):
-                    chunk_idx = i // PAILLIER_MSG_TABLE_SIZE
-                    g_dict[str(chunk_idx)] = [int(hex_val, 16) for hex_val in flat_g[i : i + PAILLIER_MSG_TABLE_SIZE]]
+                for i in range(0, len(flat_g), msg_table_size):
+                    chunk_idx = i // msg_table_size
+                    g_dict[str(chunk_idx)] = [int(hex_val, 16) for hex_val in flat_g[i : i + msg_table_size]]
                 
                 noise_list = [int(hex_val, 16) for hex_val in tables.get("noise_table", [])]
                 
