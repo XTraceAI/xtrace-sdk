@@ -34,7 +34,7 @@ class KeyProvider(Protocol):
         ...
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes) -> "KeyProvider":
+    def from_wrapped(cls, wrapped: bytes) -> KeyProvider:
         """Reconstruct a provider from a blob previously returned by :meth:`wrap_key`."""
         ...
 
@@ -56,7 +56,6 @@ class PassphraseKeyProvider:
             passphrase.encode("utf-8"), self._salt,
             key_len=_KEY_LEN, N=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P,
         )
-        self._passphrase = passphrase
 
     def get_key(self) -> bytes:
         return self._key
@@ -67,7 +66,7 @@ class PassphraseKeyProvider:
         return self._salt
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes, *, passphrase: str) -> "PassphraseKeyProvider":
+    def from_wrapped(cls, wrapped: bytes, *, passphrase: str) -> PassphraseKeyProvider:
         """Re-derive the key from the passphrase and stored salt.
 
         :param wrapped: The salt bytes returned by :meth:`wrap_key`.
@@ -99,7 +98,7 @@ class AWSKMSKeyProvider:
         self._edek: bytes | None = None
 
     @classmethod
-    def create(cls, kms_client: object, key_id: str) -> "AWSKMSKeyProvider":
+    def create(cls, kms_client: object, key_id: str) -> AWSKMSKeyProvider:
         """Generate a fresh DEK via KMS ``GenerateDataKey``.
 
         :param kms_client: A ``boto3`` KMS client.
@@ -112,7 +111,7 @@ class AWSKMSKeyProvider:
         return provider
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes, *, kms_client: object, key_id: str) -> "AWSKMSKeyProvider":
+    def from_wrapped(cls, wrapped: bytes, *, kms_client: object, key_id: str) -> AWSKMSKeyProvider:
         """Unwrap a previously stored EDEK using KMS ``Decrypt``.
 
         :param wrapped: The EDEK bytes returned by :meth:`wrap_key`.

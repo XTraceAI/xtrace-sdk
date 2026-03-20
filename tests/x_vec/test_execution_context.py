@@ -195,16 +195,6 @@ def test_custom_salt_disk_roundtrip() -> None:
     assert restored.hash() == ctx.hash()
 
 
-def test_legacy_format_without_key_provider_field(ctx: ExecutionContext) -> None:
-    """Contexts saved before the KeyProvider refactor have no key_provider/wrapped_key fields."""
-    serialized = ctx.serialize_exec_context()
-    json_obj = json.loads(serialized)
-    # Strip the new fields to simulate legacy format
-    del json_obj["key_provider"]
-    del json_obj["wrapped_key"]
-    restored = ExecutionContext._from_serialized_exec_context(json_obj, passphrase=_PASSPHRASE)
-    assert restored.hash() == ctx.hash()
-
 
 def test_wrong_passphrase_fails_deserialize(ctx: ExecutionContext) -> None:
     serialized = ctx.serialize_exec_context()

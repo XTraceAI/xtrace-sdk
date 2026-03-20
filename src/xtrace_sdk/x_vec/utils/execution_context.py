@@ -293,7 +293,6 @@ class ExecutionContext:
         cls,
         passphrase: str | None = None,
         path: str = "",
-        salt: bytes | None = None,
         key_provider: KeyProvider | None = None,
     ) -> "ExecutionContext":
         """Load an ``ExecutionContext`` from a file previously saved with :meth:`save_to_disk`.
@@ -308,7 +307,7 @@ class ExecutionContext:
             exec_context = f.read()
 
         json_obj = json.loads(exec_context)
-        return cls._from_serialized_exec_context(json_obj, passphrase=passphrase, salt=salt, key_provider=key_provider)
+        return cls._from_serialized_exec_context(json_obj, passphrase=passphrase, key_provider=key_provider)
 
     async def save_to_remote(self, integration: "XTraceIntegration") -> str:
         """Upload the execution context to XTrace remote storage.
