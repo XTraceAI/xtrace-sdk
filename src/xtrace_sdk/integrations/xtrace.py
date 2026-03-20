@@ -102,12 +102,14 @@ class XTraceIntegration:
         return base64.b64encode(int(index_item).to_bytes((index_item.bit_length() + 7) // 8, "little")).decode("utf-8")
 
     def _preprocess_chunks(self, db: EncryptedDB, index: list[list[int]], update: bool = False) -> list[list[dict]]:
-        assert len(db) == len(index), "db and index must be the same length"
+        if len(db) != len(index):
+            raise ValueError("db and index must be the same length")
         batch: list[dict] = []
         partitioned: list[list[dict]] = []
         for j in range(len(db)):
             raw_content = db[j]["chunk_content"]
-            assert isinstance(raw_content, bytes), "chunk_content must be bytes (AES-encrypted) before storing"
+            if not isinstance(raw_content, bytes):
+                raise TypeError("chunk_content must be bytes (AES-encrypted) before storing")
             chunk: dict = {
                 "chunk_content": raw_content.decode("utf-8"),
                 "index": [self._encode_index(i) for i in index[j]],
@@ -235,7 +237,8 @@ class XTraceIntegration:
         partitioned = self._preprocess_chunks(chunk_updates, index_updates, update=True)
         results = []
         for batch in partitioned:
-            assert all("chunk_id" in c for c in batch), "All chunk updates must have a chunk_id"
+            if not all("chunk_id" in c for c in batch):
+                raise ValueError("All chunk updates must have a chunk_id")
             req_body = {"kb_id": kb_id, "chunk_updates": batch, "context_id": context_id}
             async with self.session.put(  # type: ignore
                 f"{self.api_url}/v1/chunk/{self.org_id}", json=req_body, headers=self._headers()
@@ -322,7 +325,8 @@ class XTraceIntegration:
         if meta_filter is not None:
             req_body["meta_filter"] = json.dumps(meta_filter) if isinstance(meta_filter, dict) else meta_filter
         if range is not None:
-            assert isinstance(range, list) and len(range) == 2 and range[0] < range[1], "range must be [min_int, max_int]"
+            if not (isinstance(range, list) and len(range) == 2 and range[0] < range[1]):
+                raise ValueError("range must be [min_int, max_int]")
             req_body["range"] = range
 
         async with self.session.post(  # type: ignore

@@ -1,6 +1,4 @@
-import random
-from time import perf_counter
-from typing import Optional
+import secrets
 
 import gmpy2
 from Crypto.Util import number
@@ -14,11 +12,7 @@ MSG_BITS = 8  # Message chunk size
 NOISE_TABLE_SIZE = 2**8  # Precomputed noise entries
 NOISE_MULTIPLES = 14  # Number of noise factors to multiply
 
-# Imports necessary for obtaining DSA parameters (generating alpha)
-# from cryptography.hazmat.primitives.asymmetric import dsa
-# import secrets
-
-class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierLookupPublicKey]):
+class PaillierLookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierLookupPublicKey]):
     """
     A self implemented paillier encryption scheme
     """
@@ -48,8 +42,8 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         q_bits_2 = q_bits_bound - q_bits_1
         
         # --- two independent DSA-style groups ---
-        p1, q1, g1 = Paillier_Lookup.gen_dsa_params_custom(key_len, q_bits_1)
-        p2, q2, g2 = Paillier_Lookup.gen_dsa_params_custom(key_len, q_bits_2)
+        p1, q1, g1 = PaillierLookup.gen_dsa_params_custom(key_len, q_bits_1)
+        p2, q2, g2 = PaillierLookup.gen_dsa_params_custom(key_len, q_bits_2)
         
         # Paillier primes
         p = p1
@@ -58,11 +52,11 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         n_sq = n * n
         
         # Lift g1, g2 to p^2, q^2 so their orders gain factors p and q
-        g1_p2 = Paillier_Lookup.lift_to_p2_with_p_component(g1 % p, p)      # ord = q1 * p in Z_{p^2}*
-        g2_q2 = Paillier_Lookup.lift_to_p2_with_p_component(g2 % q, q)      # ord = q2 * q in Z_{q^2}*
+        g1_p2 = PaillierLookup.lift_to_p2_with_p_component(g1 % p, p)      # ord = q1 * p in Z_{p^2}*
+        g2_q2 = PaillierLookup.lift_to_p2_with_p_component(g2 % q, q)      # ord = q2 * q in Z_{q^2}*
         
         # CRT to n^2
-        g, _ = Paillier_Lookup.crt_pair(g1_p2, p * p, g2_q2, q * q)
+        g, _ = PaillierLookup.crt_pair(g1_p2, p * p, g2_q2, q * q)
         
         # alpha = lcm(q1, q2) (q1 * q2 should work as well)
         a = gmpy2.lcm(q1, q2)
@@ -70,17 +64,17 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         # (sanity) ensure ord(g) | n*a and n-part is present
         if gmpy2.powmod(g, n * a, n_sq) != 1 or gmpy2.powmod(g, n, n_sq) == 1:
             # Regenerate if keygen fails, extremely improbable
-            return Paillier_Lookup.key_gen(key_len, alpha_len)
+            return PaillierLookup.key_gen(key_len, alpha_len)
         
         phi = (p - 1) * (q - 1)
         g_n = gmpy2.powmod(g, n, n_sq)
-        g_a_inv = gmpy2.powmod(Paillier_Lookup.L(gmpy2.powmod(g, a, n_sq), n), -1, n)
+        g_a_inv = gmpy2.powmod(PaillierLookup.L(gmpy2.powmod(g, a, n_sq), n), -1, n)
         
         # precompute g table
-        g_table = Paillier_Lookup.precompute_g_table(g, n, key_len)
+        g_table = PaillierLookup.precompute_g_table(g, n, key_len)
         
         # We are not using a precomputed noise table anymore, pass an empty list for API compatibility.
-        noise_table = Paillier_Lookup.precompute_noise_table(g, n)
+        noise_table = PaillierLookup.precompute_noise_table(g, n)
         
         return {
             "sk": {"phi": phi, "a": a, "g_a_inv": g_a_inv},
@@ -94,27 +88,18 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
 
     @staticmethod
     def precompute_g_table(g: mpz, n: mpz, key_len: int, msg_bits: int=MSG_BITS) -> dict[int, list[int]]:
-        start_time = perf_counter()
         g_table = {}
         max_j = 2**msg_bits
-        for i in range(0, (key_len * 2 + MSG_BITS - 1) // MSG_BITS):  # Split into key_length // MSG_BIT chunks (e.g., 8-bit each)
+        for i in range(0, (key_len * 2 + MSG_BITS - 1) // MSG_BITS):
             base = gmpy2.powmod(g, 2**(msg_bits * i), n**2)
             g_table[i] = [gmpy2.powmod(base, j, n**2) for j in range(max_j)]
-        end_time = perf_counter()
-        # print(f"Precomputation of g_table took {end_time - start_time:.6f} seconds")
-        # print(f"size of g_table: {sys.getsizeof(g_table)} bytes")
         return g_table
 
     @staticmethod
     def precompute_noise_table(g: mpz, n: mpz, size: int=NOISE_TABLE_SIZE) -> list[int]:
-        start_time = perf_counter()
         n_sq = n**2
         g_n = gmpy2.powmod(g, n, n_sq)
-        noise_table = [gmpy2.powmod(g_n, Paillier_Lookup.generate_random_r(n), n_sq) for _ in range(size)]
-        # noise_table = [1 + Paillier_Lookup.generate_random_r({"n": n}) * g % n_sq for _ in range(size)]
-        end_time = perf_counter()
-        # print(f"Precomputation of noise_table took {end_time - start_time:.6f} seconds")
-        # print(f"size of noise_table: {sys.getsizeof(noise_table)} bytes")
+        noise_table = [gmpy2.powmod(g_n, PaillierLookup.generate_random_r(n), n_sq) for _ in range(size)]
         return noise_table
 
     @staticmethod
@@ -180,7 +165,7 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
             t = mpz(number.getRandomRange(0, span))
             k = k_lo + 2 * t
             p = k * q + 1
-            if Paillier_Lookup.bitlen(p) != p_bits:
+            if PaillierLookup.bitlen(p) != p_bits:
                 continue
             if gmpy2.is_prime(p, 40):  # Miller–Rabin rounds
                 break
@@ -205,7 +190,7 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         :rtype: int
         """
         while True:
-            r = gmpy2.mpz(random.randint(0, n))
+            r = gmpy2.mpz(secrets.randbelow(int(n)) + 1)
             if gmpy2.gcd(r, n) == 1:
                 break
         return r
@@ -228,12 +213,14 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
             g_table = {}
         if noise_table is None:
             noise_table = [mpz(1)]
-        assert plaintext < pk["n"] and plaintext >= 0, "plaintext must be in range [0,n)"
+        if not (0 <= plaintext < pk["n"]):
+            raise ValueError("plaintext must be in range [0, n)")
         g = pk["g"]
         n = pk["n"]
         n_sq = pk["n_squared"]
-        r = Paillier_Lookup.generate_random_r(pk['n'])
-        assert gmpy2.gcd(r, n) == 1
+        r = PaillierLookup.generate_random_r(pk['n'])
+        if gmpy2.gcd(r, n) != 1:
+            raise ValueError("random r is not coprime with n")
         
         m_split = [(plaintext >> (MSG_BITS*i)) & (2**MSG_BITS -1) for i in range(message_chunks)]
         g_m = gmpy2.mpz(1)
@@ -246,7 +233,7 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         
         noise = gmpy2.mpz(1)
         for _ in range(NOISE_MULTIPLES):
-            noise = (noise * random.choice(noise_table)) % n_sq
+            noise = (noise * noise_table[secrets.randbelow(len(noise_table))]) % n_sq
         
         return (g_m * noise) % n_sq
 
@@ -263,15 +250,16 @@ class Paillier_Lookup(HomomorphicBase[int, int, PaillierLookupKeyPair, PaillierL
         :return: plaintext
         :rtype: int
         """
-        assert ciphertext < keys['pk']['n_squared'] and ciphertext >=0 , "ciphertext must be in range [0,n^2)"
+        if not (0 <= ciphertext < keys['pk']['n_squared']):
+            raise ValueError("ciphertext must be in range [0, n^2)")
         phi = keys['sk']["phi"]
         a = keys['sk']["a"]
         g = keys['pk']['g']
         n = keys['pk']['n']
         n_sq = keys['pk']['n_squared']
 
-        c_a = Paillier_Lookup.L(gmpy2.powmod(ciphertext, a, n_sq), n)
-        g_a_inv = keys['sk']["g_a_inv"] # gmpy2.powmod(Paillier_Lookup.L(gmpy2.powmod(g, a, n_sq), n), -1, n)
+        c_a = PaillierLookup.L(gmpy2.powmod(ciphertext, a, n_sq), n)
+        g_a_inv = keys['sk']["g_a_inv"] # gmpy2.powmod(PaillierLookup.L(gmpy2.powmod(g, a, n_sq), n), -1, n)
 
         return (c_a * g_a_inv) % n
 

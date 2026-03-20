@@ -1,3 +1,5 @@
+import secrets
+
 import gmpy2
 from Crypto.Util import number
 
@@ -50,11 +52,9 @@ class Paillier(HomomorphicBase[gmpy2.mpz, gmpy2.mpz, PaillierKeyPair, PaillierPu
         :return: a random r to be used for encryption.
         :rtype: gmpy2.mpz
         """
+        n = int(pk['n'])
         while True:
-            rs = gmpy2.random_state(hash(gmpy2.random_state()))
-            rand_min = gmpy2.mpz(1)
-            rand_max = pk['n'] - 1
-            r = gmpy2.mpz_random(rs, rand_max - rand_min + 1) + rand_min
+            r = gmpy2.mpz(secrets.randbelow(n - 1) + 1)
             if gmpy2.gcd(r, pk['n']) == 1:
                 break
         return r
@@ -70,12 +70,14 @@ class Paillier(HomomorphicBase[gmpy2.mpz, gmpy2.mpz, PaillierKeyPair, PaillierPu
         :return: Paillier cipher 
         :rtype: gmpy2.mpz
         """
-        assert plaintext < pk["n"] and plaintext >= 0, "plaintext must be in range [0,n)"
+        if not (0 <= plaintext < pk["n"]):
+            raise ValueError("plaintext must be in range [0, n)")
         g = pk["g"]
         n = pk["n"]
         n_squared = pk["n_squared"]
         r = Paillier.generate_random_r(pk)
-        assert gmpy2.gcd(r, n) == 1
+        if gmpy2.gcd(r, n) != 1:
+            raise ValueError("random r is not coprime with n")
         a = gmpy2.powmod(g, plaintext, n_squared)
         b = gmpy2.powmod(r, n, n_squared)
         return (a * b) % n_squared
@@ -91,7 +93,8 @@ class Paillier(HomomorphicBase[gmpy2.mpz, gmpy2.mpz, PaillierKeyPair, PaillierPu
         :return: plaintext
         :rtype: gmpy2.mpz
         """
-        assert ciphertext < keys['pk']['n_squared']  and ciphertext >=0 , "ciphertext must be in range [0,n^2)"
+        if not (0 <= ciphertext < keys['pk']['n_squared']):
+            raise ValueError("ciphertext must be in range [0, n^2)")
         phi = keys['sk']["phi"]
         n = keys['pk']['n']
         n_squared = keys['pk']['n_squared']

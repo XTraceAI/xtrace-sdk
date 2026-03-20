@@ -65,10 +65,11 @@ class Retriever:
         """
         if inspect.isawaitable(query_vector):
             query_vector = await query_vector
-        assert len(query_vector) == self.execution_context.embed_len(), (
-            f"Query dimension {len(query_vector)} does not match "
-            f"homomorphic client dimension {self.execution_context.embed_len()}"
-        )
+        if len(query_vector) != self.execution_context.embed_len():
+            raise ValueError(
+                f"Query dimension {len(query_vector)} does not match "
+                f"homomorphic client dimension {self.execution_context.embed_len()}"
+            )
         query_bin: list[int] = Embedding.float_2_bin(query_vector).tolist()
 
         t0 = perf_counter()

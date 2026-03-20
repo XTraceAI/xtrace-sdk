@@ -1,5 +1,5 @@
 import math
-import random
+import secrets
 
 from Crypto.Util import number
 
@@ -8,7 +8,7 @@ from xtrace_sdk.x_vec.utils.xtrace_types import GoldwasserMicaliKeyPair, Goldwas
 
 BIT_STRING_LENGTH = 1024  # Adjustable constant for bit sequence length
 
-class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKeyPair, GoldwasserMicaliPublicKey]):
+class GoldwasserMicali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKeyPair, GoldwasserMicaliPublicKey]):
     """
     A self implemented Goldwasser Micali encryption scheme
     """
@@ -16,19 +16,19 @@ class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKe
     def __init__(self, keys: GoldwasserMicaliKeyPair):
         """constructor
 
-        :param keys: Goldwasser_Micali Pk SK pair returned by key_gen
+        :param keys: GoldwasserMicali Pk SK pair returned by key_gen
         :type keys: GoldwasserMicaliKeyPair
         """
         self.keys = keys 
 
     @staticmethod
     def key_gen(key_len: int) -> GoldwasserMicaliKeyPair:
-        """Key generation routine for the Goldwasser_Micali crypto scheme. 
+        """Key generation routine for the GoldwasserMicali crypto scheme. 
 
         :param key_len: the number of bits in PK SK
         :type key_len: int
-        :return: Goldwasser_Micali PK, SK pair
-        :rtype: Goldwasser_MicaliKeyPair
+        :return: GoldwasserMicali PK, SK pair
+        :rtype: GoldwasserMicaliKeyPair
         """
 
         """Generate a prime number congruent to 3 mod 4. These are Blum primes"""
@@ -50,7 +50,7 @@ class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKe
 
     @staticmethod
     def generate_random_r(pk:GoldwasserMicaliPublicKey) -> int:
-        """Helper function for encryption required by Goldwasser_Micali scheme
+        """Helper function for encryption required by GoldwasserMicali scheme
 
         :param pk: the public key
         :type pk: GoldwasserMicaliPublicKey
@@ -58,7 +58,7 @@ class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKe
         :rtype: int
         """
         while True:
-            r = random.randint(0, pk['n'])
+            r = secrets.randbelow(pk['n']) + 1
             if math.gcd(r, pk['n']) == 1:
                 break
         return r
@@ -79,7 +79,7 @@ class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKe
         ciphertext = []
         for bit in plaintext:
             while True:
-                y = random.randint(1, n-1)
+                y = secrets.randbelow(n - 1) + 1
                 if number.GCD(y, n) == 1:
                     break
             c = (pow(y, 2, n) * pow(x, bit, n)) % n
@@ -112,20 +112,20 @@ class Goldwasser_Micali(HomomorphicBase[list[int], list[int], GoldwasserMicaliKe
 
     @staticmethod
     def add(ciphertext1: list, ciphertext2: list, pk: GoldwasserMicaliPublicKey) -> list:
-        """Not supported for Goldwasser_Micali.
+        """Not supported for GoldwasserMicali.
         """
         raise NotImplementedError("Goldwasser Micali is not homomorphic under addition")
 
 
     @staticmethod
     def multiply(ciphertext1: list, ciphertext2: list, pk: GoldwasserMicaliPublicKey) -> list:
-        """Not supported for Goldwasser_Micali.
+        """Not supported for GoldwasserMicali.
         """
         raise NotImplementedError("Goldwasser Micali is not homomorphic under multiplication")
 
     @staticmethod
     def xor(ciphertext1: list, ciphertext2: list, pk: GoldwasserMicaliPublicKey) -> list:
-        """Homomorphic xor of Goldwasser_Micali crypto system.
+        """Homomorphic xor of GoldwasserMicali crypto system.
 
         :param ciphertext1: one the ciphers to be xor'ed
         :type ciphertext1: int

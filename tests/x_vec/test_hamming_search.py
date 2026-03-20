@@ -26,6 +26,7 @@ import pytest_asyncio
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.data_loaders.loader import DataLoader
 from xtrace_sdk.x_vec.retrievers.retriever import Retriever
+from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
 
 # ---------------------------------------------------------------------------
 # Skip if credentials are absent

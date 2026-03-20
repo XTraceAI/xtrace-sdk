@@ -4,7 +4,7 @@ import math
 from typing import Optional
 
 
-class leafNode:
+class LeafNode:
 
     def __init__(self, file: bytes, idx: int, isPad: bool) -> None:
         sha256 = hashlib.sha256()
@@ -15,20 +15,20 @@ class leafNode:
         self.Proof: list = []
         self.idx = idx
         self.isPad = isPad
-        self.parent: internalNode | None = None
+        self.parent: InternalNode | None = None
 
     def __str__(self) -> str:
         return str(self.data)
 
 
 
-class internalNode:
+class InternalNode:
 
-    def __init__(self, left: "leafNode | internalNode", right: "leafNode | internalNode", idx: int) -> None:
+    def __init__(self, left: "LeafNode | InternalNode", right: "LeafNode | InternalNode", idx: int) -> None:
         self.data: bytes = b""
         self.left = left
         self.right = right
-        self.parent: internalNode | None = None
+        self.parent: InternalNode | None = None
         self.idx = idx
         left.parent = self
         right.parent = self
@@ -37,7 +37,8 @@ class internalNode:
         return str(self.data)
 
     def updateHash(self) -> bytes:
-        assert self.left and self.right
+        if not (self.left and self.right):
+            raise ValueError("Internal node must have both left and right children")
         sha256 = hashlib.sha256()
         sha256.update(b"node:")
         sha256.update(self.left.data)
@@ -46,7 +47,7 @@ class internalNode:
         return self.data
 
 
-class merkleTree:
+class MerkleTree:
 
     def __init__(self, files: list[bytes]) -> None:
         data = files
@@ -58,18 +59,18 @@ class merkleTree:
 
         self.leafs = []
         for i in range(len(data)):
-            self.leafs.append(leafNode(data[i] ,i ,i >= self.numFiles))
+            self.leafs.append(LeafNode(data[i] ,i ,i >= self.numFiles))
 
         self.commit()
 
 
     def commit(self) -> bytes:
 
-        current: list[leafNode | internalNode] = list(self.leafs)
+        current: list[LeafNode | InternalNode] = list(self.leafs)
         for h in range(self.h):
-            parents: list[leafNode | internalNode] = []
+            parents: list[LeafNode | InternalNode] = []
             for i in range(0,len(current),2):
-                n = internalNode(current[i],current[i+1],i//2)
+                n = InternalNode(current[i],current[i+1],i//2)
                 n.updateHash()
                 parents.append(n)
             current = parents
@@ -84,26 +85,28 @@ class merkleTree:
         if self.numFiles < len(self.leafs):
             #padding available.
             idx = self.numFiles
-            assert self.leafs[idx].isPad == True
-            self.leafs[idx] = leafNode(newFile,idx,False)
+            if not self.leafs[idx].isPad:
+                raise ValueError(f"Expected padding node at index {idx}")
+            self.leafs[idx] = LeafNode(newFile,idx,False)
 
         else:
             idx = len(self.leafs)
-            self.leafs.append(leafNode(newFile ,idx ,False))
+            self.leafs.append(LeafNode(newFile ,idx ,False))
             #padd the tree to nearest power of 2
             height = math.ceil(math.log(len(self.leafs),2))
             self.h = height
             padlen = (2**height)-len(self.leafs)
             for i in range(1,padlen+1):
-                self.leafs.append(leafNode(b"\x00",idx+i,True))
+                self.leafs.append(LeafNode(b"\x00",idx+i,True))
 
         self.numFiles += 1
         r = self.commit()
         return (idx,r)
 
     def updateLeaf(self, idx: int, update: bytes) -> tuple[int, bytes]:
-        assert idx < self.numFiles
-        self.leafs[idx] = leafNode(update,idx,False)
+        if idx >= self.numFiles:
+            raise IndexError(f"Index {idx} out of range (numFiles={self.numFiles})")
+        self.leafs[idx] = LeafNode(update,idx,False)
         r = self.commit()
         return (idx,r)
 
@@ -113,7 +116,7 @@ class merkleTree:
         pass
 
     def open(self, idx: int) -> tuple[list, bytes]:
-        current: leafNode | internalNode = self.leafs[idx]
+        current: LeafNode | InternalNode = self.leafs[idx]
         path: list[bytes] = []
         while current.parent:
             if current.idx % 2 == 0:
