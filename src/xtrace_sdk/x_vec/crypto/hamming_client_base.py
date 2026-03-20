@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 
+from xtrace_sdk.x_vec.utils.xtrace_types import EncryptedVector
+
 
 class HammingClientBase(ABC):
     """Abstract base class for homomorphic encryption clients used in encrypted Hamming distance search.
@@ -11,24 +13,24 @@ class HammingClientBase(ABC):
     """
 
     @abstractmethod
-    def encrypt_vec_one(self, embd: list[int]) -> list[int]:
+    def encrypt_vec_one(self, embd: list[int]) -> EncryptedVector:
         """Encrypt a single binary embedding vector.
 
         :param embd: Binary vector of length ``embed_len`` with values in {0, 1}.
         :type embd: list[int]
         :return: Encrypted representation of the vector.
-        :rtype: list[int]
+        :rtype: EncryptedVector
         """
         ...
 
     @abstractmethod
-    def encrypt_vec_batch(self, embds: list[list[int]]) -> list[list[int]]:
+    def encrypt_vec_batch(self, embds: list[list[int]]) -> list[EncryptedVector]:
         """Encrypt a batch of binary embedding vectors.
 
         :param embds: List of binary vectors, each of length ``embed_len`` with values in {0, 1}.
         :type embds: list[list[int]]
         :return: List of encrypted representations, one per input vector.
-        :rtype: list[list[int]]
+        :rtype: list[EncryptedVector]
         """
         ...
 

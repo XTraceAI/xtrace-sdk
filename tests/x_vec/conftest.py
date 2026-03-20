@@ -1,6 +1,7 @@
 import pytest
+from typing import Any
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: Any) -> None:
     parser.addoption(
         "--key_len",
         action="store",
@@ -21,13 +22,13 @@ def pytest_addoption(parser):
     )
 
 @pytest.fixture
-def key_len(request):
+def key_len(request: pytest.FixtureRequest) -> int:
     return int(request.config.getoption("--key_len"))
 
 @pytest.fixture
-def num_runs(request):
+def num_runs(request: pytest.FixtureRequest) -> int:
     return int(request.config.getoption("--num_runs"))
 
 @pytest.fixture
-def alpha_len(request):
+def alpha_len(request: pytest.FixtureRequest) -> int:
     return int(request.config.getoption("--alpha_len"))

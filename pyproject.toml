@@ -20,6 +20,12 @@ dependencies = [
 ]
 classifiers = ["Programming Language :: Python :: 3"]
 
+[project.urls]
+Homepage = "https://xtrace.ai"
+Documentation = "https://docs.xtrace.ai"
+Repository = "https://github.com/XTraceAI/xtrace-vec-sdk"
+Issues = "https://github.com/XTraceAI/xtrace-vec-sdk/issues"
+
 [project.scripts]
 xtrace = "xtrace_sdk.cli.main:app"
 
@@ -69,7 +75,7 @@ dev = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-exclude = [".git", ".venv", "__pycache__", "build", "dist", "docs/_build", "examples", "benchmarks", "docs"]
+exclude = [".git", ".venv", "__pycache__", "build", "dist", "docs/_build", "examples", "benchmarks", "docs", "src/xtrace_sdk/cli"]
 force-exclude = true
 
 [tool.ruff.lint]
@@ -101,6 +107,7 @@ ignore = [
 
 [tool.mypy]
 mypy_path = "."
+exclude = ["^src/xtrace_sdk/cli/", "^docs/", "^examples/", "^benchmarks/"]
 namespace_packages = true
 python_version = "3.11"
 disallow_untyped_defs = true

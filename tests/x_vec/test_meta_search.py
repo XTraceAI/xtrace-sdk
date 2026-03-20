@@ -17,6 +17,8 @@ import os
 import numpy as np
 import pytest
 import pytest_asyncio
+from typing import AsyncGenerator, cast
+from xtrace_sdk.x_vec.utils.xtrace_types import DocumentCollection
 
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.data_loaders.loader import DataLoader
@@ -75,7 +77,7 @@ META_QUERY_TESTS = [
 # Module-scoped fixture: create KB → load data → yield → delete KB
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture(scope="module")
-async def test_env():
+async def test_env() -> AsyncGenerator[tuple[XTraceIntegration, str, str], None]:
     integration = XTraceIntegration(
         org_id=os.environ["XTRACE_ORG_ID"],
         api_key=os.environ["XTRACE_API_KEY"],
@@ -103,7 +105,7 @@ async def test_env():
     vectors = [rng.integers(0, 2, 512).tolist() for _ in _DOCUMENTS]
 
     dl = DataLoader(exec_context, integration)
-    index, db = dl.load_data_from_memory(_DOCUMENTS, vectors, disable_progress=True)
+    index, db = await dl.load_data_from_memory(cast(DocumentCollection, _DOCUMENTS), vectors, disable_progress=True)
     await dl.dump_db(db, index=index, kb_id=kb_id)
 
     yield integration, kb_id, ctx_id

@@ -22,6 +22,8 @@ import os
 import numpy as np
 import pytest
 import pytest_asyncio
+from typing import AsyncGenerator, cast
+from xtrace_sdk.x_vec.utils.xtrace_types import DocumentCollection
 
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.data_loaders.loader import DataLoader
@@ -72,7 +74,7 @@ _DOCUMENTS = [
 # Module-scoped fixture
 # ---------------------------------------------------------------------------
 @pytest_asyncio.fixture(scope="module")
-async def test_env():
+async def test_env() -> AsyncGenerator[tuple[XTraceIntegration, Retriever, str], None]:
     integration = XTraceIntegration(
         org_id=os.environ["XTRACE_ORG_ID"],
         api_key=os.environ["XTRACE_API_KEY"],
@@ -95,7 +97,7 @@ async def test_env():
     ctx_id: str = exec_context.id
 
     dl = DataLoader(exec_context, integration)
-    index, db = dl.load_data_from_memory(_DOCUMENTS, _BIN_VECS, disable_progress=True)
+    index, db = await dl.load_data_from_memory(cast(DocumentCollection, _DOCUMENTS), _BIN_VECS, disable_progress=True)
     await dl.dump_db(db, index=index, kb_id=kb_id)
 
     retriever = Retriever(exec_context, integration)
@@ -147,7 +149,7 @@ async def test_meta_filter_restricts_results(test_env: tuple) -> None:
     """Top-1 from a filtered search must belong to the filtered group."""
     _, retriever, kb_id = test_env
     # Query with doc_1's vector but restrict to group_2 (chunk_ids 2, 5, 8, 11)
-    group_2_ids = {d["chunk_id"] for d in _DOCUMENTS if d["meta_data"]["tag1"] == "group_2"}
+    group_2_ids = {d["chunk_id"] for d in _DOCUMENTS if d["meta_data"]["tag1"] == "group_2"}  # type: ignore[index]
     ids = await retriever.nn_search_for_ids(
         _query_vec(0), k=1, kb_id=kb_id, meta_filter={"tag1": "group_2"}
     )

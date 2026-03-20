@@ -199,7 +199,7 @@ def test_custom_salt_disk_roundtrip() -> None:
 def test_wrong_passphrase_fails_deserialize(ctx: ExecutionContext) -> None:
     serialized = ctx.serialize_exec_context()
     json_obj = json.loads(serialized)
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         ExecutionContext._from_serialized_exec_context(json_obj, passphrase="wrong-passphrase")
 
 
@@ -216,7 +216,7 @@ def test_wrong_salt_fails_deserialize() -> None:
     json_obj = json.loads(serialized)
     # Override with a wrong-salt provider to bypass the stored wrapped_key
     wrong_provider = PassphraseKeyProvider(_PASSPHRASE, salt=b"wrong-salt")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         ExecutionContext._from_serialized_exec_context(json_obj, key_provider=wrong_provider)
 
 

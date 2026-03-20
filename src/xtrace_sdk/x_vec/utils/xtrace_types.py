@@ -65,7 +65,14 @@ class GoldwasserMicaliKeyPair(TypedDict):
 
 # ── Encrypted vector type ──────────────────────────────────────────────────
 
-PaillierEncryptedNumber: TypeAlias = list[int]
+EncryptedVector: TypeAlias = list[int]
+"""Scheme-agnostic encrypted embedding vector (list of ciphertext ints)."""
+
+# Backward-compatible alias for Paillier-specific code.
+PaillierEncryptedNumber: TypeAlias = EncryptedVector
+
+EncryptedIndex: TypeAlias = list[EncryptedVector]
+"""Per-document encrypted embedding index — one ``EncryptedVector`` per chunk."""
 
 
 # ── Chunk / collection types ───────────────────────────────────────────────
@@ -80,11 +87,20 @@ class MetaData(TypedDict, total=False):
 
 
 class Chunk(TypedDict, total=False):
-    chunk_content: str | bytes  # str for plaintext input; bytes after AES encryption
+    """A plaintext document chunk before encryption."""
+    chunk_content: str
     meta_data: MetaData
     name: str
     chunk_id: int
 
 
-EncryptedDB: TypeAlias = list[Chunk]
+class EncryptedChunk(TypedDict, total=False):
+    """A document chunk whose ``chunk_content`` has been AES-encrypted to bytes."""
+    chunk_content: bytes
+    meta_data: MetaData
+    name: str
+    chunk_id: int
+
+
+EncryptedDB: TypeAlias = list[EncryptedChunk]
 DocumentCollection: TypeAlias = Sequence[Chunk]

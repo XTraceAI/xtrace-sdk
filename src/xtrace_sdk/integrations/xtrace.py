@@ -8,7 +8,7 @@ import aiohttp
 import gmpy2
 import msgpack
 
-from xtrace_sdk.x_vec.utils.xtrace_types import Chunk, EncryptedDB
+from xtrace_sdk.x_vec.utils.xtrace_types import EncryptedDB, EncryptedIndex
 
 
 class XTraceIntegration:
@@ -101,7 +101,7 @@ class XTraceIntegration:
     def _encode_index(self, index_item: gmpy2.mpz) -> str:
         return base64.b64encode(int(index_item).to_bytes((index_item.bit_length() + 7) // 8, "little")).decode("utf-8")
 
-    def _preprocess_chunks(self, db: EncryptedDB, index: list[list[int]], update: bool = False) -> list[list[dict]]:
+    def _preprocess_chunks(self, db: EncryptedDB, index: EncryptedIndex, update: bool = False) -> list[list[dict]]:
         if len(db) != len(index):
             raise ValueError("db and index must be the same length")
         batch: list[dict] = []
@@ -155,13 +155,13 @@ class XTraceIntegration:
                     chunk["index"] = [base64.b64decode(i) for i in chunk["index"]]
             return data
 
-    async def store_db(self, db: EncryptedDB, index: list[list[int]], kb_id: str, context_id: str, concurrent: bool = False) -> list[dict]:
+    async def store_db(self, db: EncryptedDB, index: EncryptedIndex, kb_id: str, context_id: str, concurrent: bool = False) -> list[dict]:
         """Upload an encrypted database to XTrace, automatically batching into groups of 500.
 
         :param db: Encrypted document collection produced by ``DataLoader``.
         :type db: EncryptedDB
         :param index: Encrypted embedding vectors, one list per chunk.
-        :type index: list[list[int]]
+        :type index: EncryptedIndex
         :param kb_id: Destination knowledge-base ID.
         :type kb_id: str
         :param context_id: Execution context ID to associate with the data.
@@ -217,15 +217,15 @@ class XTraceIntegration:
                 raise
         raise RuntimeError("insert_chunks: exhausted retries")
 
-    async def update_chunks(self, index_updates: list[list[int]], chunk_updates: list[Chunk], context_id: str, kb_id: str) -> list[dict]:
+    async def update_chunks(self, index_updates: EncryptedIndex, chunk_updates: EncryptedDB, context_id: str, kb_id: str) -> list[dict]:
         """Replace existing chunks with updated content and re-encrypted vectors.
 
         Each entry in ``chunk_updates`` must include a ``chunk_id`` field.
 
         :param index_updates: New encrypted embedding vectors, one list per chunk.
-        :type index_updates: list[list[int]]
+        :type index_updates: EncryptedIndex
         :param chunk_updates: Updated chunk dicts, each containing a ``chunk_id``.
-        :type chunk_updates: list[Chunk]
+        :type chunk_updates: EncryptedDB
         :param context_id: Execution context ID.
         :type context_id: str
         :param kb_id: Knowledge-base ID the chunks belong to.

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 import os
-from typing import Protocol
+from typing import Any, Protocol
 
 from Crypto.Protocol.KDF import scrypt
 
@@ -34,7 +34,7 @@ class KeyProvider(Protocol):
         ...
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes) -> KeyProvider:
+    def from_wrapped(cls, wrapped: bytes, **kwargs: Any) -> KeyProvider:
         """Reconstruct a provider from a blob previously returned by :meth:`wrap_key`."""
         ...
 
@@ -66,12 +66,13 @@ class PassphraseKeyProvider:
         return self._salt
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes, *, passphrase: str) -> PassphraseKeyProvider:
+    def from_wrapped(cls, wrapped: bytes, **kwargs: Any) -> PassphraseKeyProvider:
         """Re-derive the key from the passphrase and stored salt.
 
         :param wrapped: The salt bytes returned by :meth:`wrap_key`.
-        :param passphrase: The original passphrase.
+        :param passphrase: The original passphrase (passed via kwargs).
         """
+        passphrase = kwargs["passphrase"]
         return cls(passphrase, salt=wrapped)
 
     def provider_id(self) -> str:
@@ -105,21 +106,23 @@ class AWSKMSKeyProvider:
         :param key_id: KMS key ID, ARN, or alias.
         """
         provider = cls(kms_client, key_id)
-        resp = kms_client.generate_data_key(KeyId=key_id, KeySpec="AES_256")  # type: ignore[union-attr]
+        resp = kms_client.generate_data_key(KeyId=key_id, KeySpec="AES_256")  # type: ignore[attr-defined]
         provider._key = resp["Plaintext"]
         provider._edek = resp["CiphertextBlob"]
         return provider
 
     @classmethod
-    def from_wrapped(cls, wrapped: bytes, *, kms_client: object, key_id: str) -> AWSKMSKeyProvider:
+    def from_wrapped(cls, wrapped: bytes, **kwargs: Any) -> AWSKMSKeyProvider:
         """Unwrap a previously stored EDEK using KMS ``Decrypt``.
 
         :param wrapped: The EDEK bytes returned by :meth:`wrap_key`.
-        :param kms_client: A ``boto3`` KMS client.
-        :param key_id: KMS key ID, ARN, or alias.
+        :param kms_client: A ``boto3`` KMS client (passed via kwargs).
+        :param key_id: KMS key ID, ARN, or alias (passed via kwargs).
         """
+        kms_client = kwargs["kms_client"]
+        key_id = kwargs["key_id"]
         provider = cls(kms_client, key_id)
-        resp = kms_client.decrypt(CiphertextBlob=wrapped, KeyId=key_id)  # type: ignore[union-attr]
+        resp = kms_client.decrypt(CiphertextBlob=wrapped, KeyId=key_id)
         provider._key = resp["Plaintext"]
         provider._edek = wrapped
         return provider

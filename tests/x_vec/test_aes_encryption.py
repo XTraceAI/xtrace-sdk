@@ -32,7 +32,7 @@ def test_wrong_key_fails() -> None:
     client_a = AESClient(os.urandom(32))
     client_b = AESClient(os.urandom(32))
     ciphertext = client_a.encrypt("secret")
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         client_b.decrypt(ciphertext)
 
 

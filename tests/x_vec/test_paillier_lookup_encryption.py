@@ -2,12 +2,12 @@ import random
 
 import pytest
 from xtrace_sdk.x_vec.crypto.encryption import paillier_lookup
-from xtrace_sdk.x_vec.utils.xtrace_types import PaillierKeyPair
+from xtrace_sdk.x_vec.utils.xtrace_types import PaillierLookupKeyPair
 
 random.seed(42)
 
 @pytest.fixture
-def key_pair(key_len:int, alpha_len:int) -> PaillierKeyPair:
+def key_pair(key_len:int, alpha_len:int) -> PaillierLookupKeyPair:
     """Fixture to generate a key pair for testing."""
     keys = paillier_lookup.PaillierLookup.key_gen(key_len, alpha_len)
     return keys
@@ -19,7 +19,7 @@ def random_numbers(key_len:int, num_runs:int) -> list:
     return [random.randint(1, 2**key_len) for _ in range(num_runs)]
 
 
-def test_encrypt_and_decrypt(key_pair: PaillierKeyPair, random_numbers: list) -> None:
+def test_encrypt_and_decrypt(key_pair: PaillierLookupKeyPair, random_numbers: list) -> None:
     """Test the encryption and decryption process."""
     for num in random_numbers:
         ciphertext = paillier_lookup.PaillierLookup.encrypt(num, key_pair['pk'], key_pair['g_table'], key_pair['noise_table'], key_pair['message_chunks'])
@@ -27,7 +27,7 @@ def test_encrypt_and_decrypt(key_pair: PaillierKeyPair, random_numbers: list) ->
         assert decrypted_num == num, f"Decrypted number {decrypted_num} does not match original number {num}."
 
 
-def test_addition_of_ciphers(key_pair: PaillierKeyPair, random_numbers: list, key_len:int) -> None:
+def test_addition_of_ciphers(key_pair: PaillierLookupKeyPair, random_numbers: list, key_len:int) -> None:
     """Test the addition of encrypted numbers."""
     encrypted_numbers = [paillier_lookup.PaillierLookup.encrypt(num, key_pair['pk'], key_pair['g_table'], key_pair['noise_table'], key_pair['message_chunks']) for num in random_numbers]
 
