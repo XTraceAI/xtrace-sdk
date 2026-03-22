@@ -20,14 +20,17 @@ pip install "xtrace-ai-sdk[embedding]"
 
 ```python
 import asyncio
+from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+from xtrace_sdk.x_vec.crypto.key_provider import PassphraseKeyProvider
 from xtrace_sdk.x_vec.data_loaders.loader import DataLoader
 from xtrace_sdk.x_vec.inference.embedding import Embedding
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.retrievers.retriever import Retriever
 
 # One-time setup: generate your private cryptographic state and save it
+provider = PassphraseKeyProvider("your-secret-passphrase")
 ctx = ExecutionContext.create(
-    passphrase="your-secret-passphrase",
+    key_provider=provider,
     homomorphic_client_type="paillier_lookup",
     embedding_length=512,
     key_len=1024,

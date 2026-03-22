@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import inspect
-import logging
 import multiprocessing
 import os
-from time import perf_counter
 
 import numpy as np
 
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.inference.embedding import Embedding
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
+from xtrace_sdk.x_vec.utils.bench import bench
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
-
-_log = logging.getLogger(__name__)
 
 
 def _decode_item(homomorphic_client: HammingClientBase, ciphertext: list[int | bytes]) -> int:
@@ -72,9 +69,8 @@ class Retriever:
             )
         query_bin: list[int] = Embedding.float_2_bin(query_vector).tolist()
 
-        t0 = perf_counter()
-        encrypted_query = self.execution_context.homomorphic.encrypt_vec_one(query_bin)
-        _log.info("query_encrypt_done", extra={"timing_ms": (perf_counter() - t0) * 1000})
+        with bench("query_encrypt"):
+            encrypted_query = self.execution_context.homomorphic.encrypt_vec_one(query_bin)
 
         hamming_kwargs: dict = {"kb_id": kb_id}
         if meta_filter is not None:
@@ -82,23 +78,21 @@ class Retriever:
         if range_filter is not None:
             hamming_kwargs["range"] = range_filter
 
-        t0 = perf_counter()
-        encrypted_hamming = await self.integration.compute_hamming_distances(
-            encrypted_query, self.execution_context.id, **hamming_kwargs
-        )
-        _log.info("query_hamming_network_done", extra={"timing_ms": (perf_counter() - t0) * 1000})
-
-        t0 = perf_counter()
-        if self.parallel:
-            os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-            tasks = [(self.execution_context.homomorphic, c[1]) for c in encrypted_hamming]
-            with multiprocessing.Pool() as pool:
-                plain_hamming = pool.starmap(_decode_item, tasks)
-        else:
-            plain_hamming = self.execution_context.homomorphic.decode_hamming_client_batch(
-                [c[1] for c in encrypted_hamming]
+        with bench("query_hamming_network"):
+            encrypted_hamming = await self.integration.compute_hamming_distances(
+                encrypted_query, self.execution_context.id, **hamming_kwargs
             )
-        _log.info("query_decrypt_done", extra={"timing_ms": (perf_counter() - t0) * 1000})
+
+        with bench("query_decrypt"):
+            if self.parallel:
+                os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+                tasks = [(self.execution_context.homomorphic, c[1]) for c in encrypted_hamming]
+                with multiprocessing.Pool() as pool:
+                    plain_hamming = pool.starmap(_decode_item, tasks)
+            else:
+                plain_hamming = self.execution_context.homomorphic.decode_hamming_client_batch(
+                    [c[1] for c in encrypted_hamming]
+                )
 
         selected_ids = [encrypted_hamming[i][0] for i in np.argsort(plain_hamming)[:k]]
         if include_scores:
@@ -124,23 +118,14 @@ class Retriever:
         if projection is None:
             projection = ["chunk_id", "chunk_content", "tag1", "tag2", "tag3", "tag4", "tag5", "facets"]
 
-        t0 = perf_counter()
-        res = await self.integration.get_chunk_by_id(chunk_ids, kb_id, projection=projection)
-        _log.info(
-            "query_retrieve_network_done",
-            extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(chunk_ids)},
-        )
-
-        t0 = perf_counter()
-        context_plain = [
-            {"chunk_content": self.execution_context.aes.decrypt(i["chunk_content"]), "meta_data": i["meta_data"]}
-            for i in res
-        ]
-        _log.info(
-            "query_aes_decrypt_done",
-            extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(res)},
-        )
-        return context_plain
+        with bench("query_retrieve_network"):
+            res = await self.integration.get_chunk_by_id(chunk_ids, kb_id, projection=projection)
+        with bench("query_aes_decrypt"):
+            result = [
+                {"chunk_content": self.execution_context.aes.decrypt(i["chunk_content"]), "meta_data": i["meta_data"]}
+                for i in res
+            ]
+        return result
 
     @staticmethod
     def format_context(contexts: list) -> str:

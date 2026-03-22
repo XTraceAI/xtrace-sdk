@@ -1,17 +1,14 @@
 import inspect
-import logging
 from pathlib import Path
-from time import perf_counter
 from typing import Optional
 
 from tqdm import tqdm
 
 from xtrace_sdk.x_vec.inference.embedding import Embedding
 from xtrace_sdk.integrations.xtrace import XTraceIntegration
+from xtrace_sdk.x_vec.utils.bench import bench
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
 from xtrace_sdk.x_vec.utils.xtrace_types import Chunk, DocumentCollection, EncryptedChunk, EncryptedDB, EncryptedIndex
-
-_log = logging.getLogger(__name__)
 
 
 class DataLoader:
@@ -53,9 +50,8 @@ class DataLoader:
         :return: List of server responses, one per upload batch.
         :rtype: list[dict]
         """
-        t0 = perf_counter()
-        result = await self.integration.store_db(db, index, kb_id, context_id=self.execution_context.id, concurrent=concurrent)
-        _log.info("ingest_store_network_done", extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(db)})
+        with bench("ingest_store_network"):
+            result = await self.integration.store_db(db, index, kb_id, context_id=self.execution_context.id, concurrent=concurrent)
         return result
 
     async def upsert_one(self, chunk: Chunk, vector: list[float], kb_id: str) -> list[dict]:
@@ -179,22 +175,20 @@ class DataLoader:
         encrypted_db = []
         bin_vecs = []
 
-        t0 = perf_counter()
-        for i in range(len(chunks)):
-            vec = vectors[i]
-            if inspect.isawaitable(vec):
-                vec = await vec
-            encrypted_db.append(EncryptedChunk(
-                chunk_content=self.execution_context.aes.encrypt(chunks[i]["chunk_content"]),
-                meta_data=chunks[i].get("meta_data", {}),
-                name=chunks[i].get("name", ""),
-                chunk_id=chunks[i].get("chunk_id", 0),
-            ))
-            bin_vecs.append(Embedding.float_2_bin(vec))
-        _log.info("ingest_aes_encrypt_done", extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(chunks)})
+        with bench("ingest_aes_encrypt"):
+            for i in range(len(chunks)):
+                vec = vectors[i]
+                if inspect.isawaitable(vec):
+                    vec = await vec
+                encrypted_db.append(EncryptedChunk(
+                    chunk_content=self.execution_context.aes.encrypt(chunks[i]["chunk_content"]),
+                    meta_data=chunks[i].get("meta_data", {}),
+                    name=chunks[i].get("name", ""),
+                    chunk_id=chunks[i].get("chunk_id", 0),
+                ))
+                bin_vecs.append(Embedding.float_2_bin(vec))
 
-        t0 = perf_counter()
-        index = self.execution_context.homomorphic.encrypt_vec_batch([v.tolist() for v in bin_vecs])
-        _log.info("ingest_paillier_encrypt_done", extra={"timing_ms": (perf_counter() - t0) * 1000, "chunk_count": len(bin_vecs)})
+        with bench("ingest_paillier_encrypt"):
+            index = self.execution_context.homomorphic.encrypt_vec_batch([v.tolist() for v in bin_vecs])
 
         return index, encrypted_db
