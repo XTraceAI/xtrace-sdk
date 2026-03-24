@@ -18,6 +18,7 @@ from typing import Any, Iterator
 from typing import List
 
 from xtrace_sdk.cli.state import get_pre, get_exec_context, get_embed_model, get_integration
+from ._utils._admin_key import resolve_api_key_override
 
 app = typer.Typer()
 console = Console()
@@ -51,7 +52,6 @@ def _silence_transformers_future_warning() -> None:
     )
 
 _ALLOWED_INFERENCE = {"ollama", "openai", "redpill", "claude"}
-_ALLOWED_MODES = {"simple", "parallel"}
 
 _ws_re = re.compile(r"[\n\r\t]+")
 _collapse_re = re.compile(r"\s+")
@@ -67,7 +67,6 @@ def _clean_full(text: str) -> str:
 class _SafeCapture(io.StringIO):
     # Pretend to be a non-TTY text stream with an encoding; avoids AttributeErrors in libs
     def isatty(self)  -> bool: return False
-    @property
     def __init__(self) -> None:
         super().__init__()
         self.encoding = "utf-8"
@@ -107,44 +106,6 @@ def _json_error(msg: str | None, code: int | None) -> NoReturn:
     typer.echo(json.dumps(payload, ensure_ascii=False))
     raise typer.Exit(1)
 
-def _bench_active(json_out: bool, bench: bool) -> bool:
-    """Bench is only active in human (non-JSON) mode."""
-    return bench and (not json_out)
-
-def _parse_bench_metrics(text: str) -> dict[str, float]:
-    """
-    Parse lines like:
-      Time taken to encrypt query: 1.23 seconds
-      Time taken to get response from server: 0.45 seconds
-      Time taken to decode hamming distances: 0.01 seconds
-      Time taken to select top 5 ids: 0.0001 seconds
-    """
-    metrics: dict[str, float] = {}
-    pat = re.compile(r"Time taken to (.*?):\s*([0-9.]+)\s*seconds", re.IGNORECASE)
-
-    for line in text.splitlines():
-        m = pat.search(line)
-        if not m:
-            continue
-        label, val = m.group(1).strip().lower(), m.group(2)
-        try:
-            seconds = float(val)
-        except ValueError:
-            continue
-        # normalize keys
-        if "encrypt" in label and "query" in label:
-            key = "encrypt_query_s"
-        elif "get response" in label or "server" in label:
-            key = "server_response_s"
-        elif "decode" in label and "hamming" in label:
-            key = "decode_hamming_s"
-        elif "select" in label and "ids" in label:
-            key = "select_topk_s"
-        else:
-            key = label.replace(" ", "_") + "_s"
-        metrics[key] = seconds
-    return metrics
-
 @app.command("retrieve", help="Retrieve from an XTrace knowledge base (optionally run inference).")
 def retrieve(
     kb_id: str = typer.Argument(..., help="Knowledge Base ID to retrieve from"),
@@ -152,8 +113,6 @@ def retrieve(
     k: int = typer.Option(3, "-k", help="Number of results (top-k)"),
     inference: str | None = typer.Option(None, "--inference", help="ollama | openai | redpill | claude"),
     model: str | None = typer.Option(None, "--model", help="Model name to use with --inference"),
-    mode: str | None = typer.Option(None, "--mode", help="simple | parallel"),
-    bench: bool = typer.Option(False, "--bench", help="Run benchmark search"),
     json_out: bool = typer.Option(False, "--json", help="Emit machine-readable JSON only"),
     api_key_override: str | None = typer.Option(
         None, "-a", "--api_key",
@@ -163,9 +122,6 @@ def retrieve(
     _silence_transformers_future_warning()
 
     inf = inference.lower() if inference else None
-    md = mode.lower() if mode else None
-    if md and md not in _ALLOWED_MODES:
-        raise typer.BadParameter(f"--mode must be one of: {', '.join(sorted(_ALLOWED_MODES))}")
     if inf:
         if inf not in _ALLOWED_INFERENCE:
             raise typer.BadParameter(f"--inference must be one of: {', '.join(sorted(_ALLOWED_INFERENCE))}")
@@ -177,24 +133,22 @@ def retrieve(
         import dotenv
         dotenv.load_dotenv()
         required = ["XTRACE_ORG_ID", "XTRACE_API_URL", "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE", "XTRACE_EMBEDDING_MODEL_PATH"]
-        if not api_key_override:
+        if api_key_override is None:
             required.append("XTRACE_API_KEY")
         if inf:
             required.append("INFERENCE_API_KEY")
         env = _require_env(required)
 
     if not json_out:
-        console.print(f"[dim]KB[/]: [bold blue]{kb_id}[/]  •  [dim]k[/]: [bold]{k}[/]" + (f"  •  [dim]mode[/]: [bold]{md}[/]" if md else ""))
+        console.print(f"[dim]KB[/]: [bold blue]{kb_id}[/]  •  [dim]k[/]: [bold]{k}[/]")
         console.print(Rule(style="dim"))
 
-    effective_api_key = api_key_override or env.get("XTRACE_API_KEY")
+    effective_api_key = resolve_api_key_override(api_key_override, env, console=console)
 
     # load components
     with _maybe_status("Using preloaded XTrace components…", enable=not json_out):
         pre = get_pre()
-        SimpleRetriever   = pre.SimpleRetriever
-        ParallelRetriever = pre.ParallelRetriever
-        RetrieverBase     = pre.RetrieverBase
+        Retriever_        = pre.Retriever
         XTraceIntegration = pre.XTraceIntegration
         ExecutionContext  = pre.ExecutionContext
         Embedding         = pre.Embedding
@@ -203,10 +157,8 @@ def retrieve(
         np                = pre.np
 
         # graceful fallback if running outside the session (one-shot mode)
-        if not all([SimpleRetriever, XTraceIntegration, ExecutionContext, Embedding, Path, pkl, np]):
+        if not all([Retriever_, XTraceIntegration, ExecutionContext, Embedding, Path, pkl, np]):
             from xtrace_sdk.x_vec.retrievers.retriever import Retriever as _SR
-            from xtrace_sdk.x_vec.retrievers.retriever import Retriever as _PR
-            from xtrace_sdk.x_vec.retrievers.retriever import Retriever as _RB
             from xtrace_sdk.integrations.xtrace import XTraceIntegration as _XI
             from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext as _EC
             from xtrace_sdk.x_vec.inference.embedding import Embedding as _EM
@@ -214,9 +166,7 @@ def retrieve(
             import pickle as _pkl
             import numpy as _np
 
-            SimpleRetriever   = SimpleRetriever   or _SR
-            ParallelRetriever = ParallelRetriever or _PR
-            RetrieverBase     = RetrieverBase     or _RB
+            Retriever_        = Retriever_        or _SR
             XTraceIntegration = XTraceIntegration or _XI
             ExecutionContext  = ExecutionContext  or _EC
             Embedding         = Embedding         or _EM
@@ -257,9 +207,8 @@ def retrieve(
                 # support both formats: raw object OR {"embedding": obj}
                 embedding_model = obj.get("embedding") if isinstance(obj, dict) else obj
 
-            Retriever = ParallelRetriever if md == "parallel" else SimpleRetriever
-            assert Retriever is not None
-            retriever = Retriever(exec_context, integration)
+            assert Retriever_ is not None
+            retriever = Retriever_(exec_context, integration)
         except Exception:
             # ensure we don't leak the underlying aiohttp session on init errors
             if _owned:
@@ -269,56 +218,25 @@ def retrieve(
                     pass
             raise
 
-    bench_raw = ""
-    bench_is_active = _bench_active(json_out, bench)
-
-    if bench_is_active:
-        with _maybe_status("Searching (benchmark)…", enable=not json_out):
-            try:
-                assert np is not None
-                assert embedding_model is not None
-                async def _bench_search() -> Any:
-                    bits = [int(x) for x in np.asarray(await embedding_model.bin_embed(query)).tolist()]
-                    return await retriever.nn_search_for_ids(bits, k, kb_id=kb_id)
-                if json_out:
-                    buf_out, buf_err = io.StringIO(), io.StringIO()
-                    from contextlib import redirect_stdout, redirect_stderr
-                    with redirect_stdout(buf_out), redirect_stderr(buf_err):
-                        ids = asyncio.run(_bench_search())
-                    bench_raw = (buf_out.getvalue() or "") + (buf_err.getvalue() or "")
-                else:
-                    ids = asyncio.run(_bench_search())
-                ids = _to_py_int_list(ids)
-            except Exception as e:
-                msg, code = extract_server_error(e)
-                if json_out:
-                    _json_error(msg or str(e), code)
-                if msg:
-                    status = f" ({code})" if code is not None else ""
-                    console.print(f"[red]Upload failed{status}:[/] {msg}")
-                else:
-                    console.print(f"[red]Upload failed:[/] {e}")
-                raise typer.Exit(1)
-    else:
-        with _maybe_status("Searching…", enable=not json_out):
-            try:
-                assert np is not None
-                assert embedding_model is not None
-                async def _search() -> Any:
-                    bits = [int(x) for x in np.asarray(await embedding_model.bin_embed(query)).tolist()]
-                    return await retriever.nn_search_for_ids(bits, k, kb_id=kb_id)
-                ids = asyncio.run(_search())
-                ids = _to_py_int_list(ids)
-            except Exception as e:
-                msg, code = extract_server_error(e)
-                if json_out:
-                    _json_error(msg, code)
-                if msg:
-                    status = f" ({code})" if code is not None else ""
-                    console.print(f"[red]Upload failed{status}:[/] {msg}")
-                else:
-                    console.print(f"[red]Upload failed:[/] {e}")
-                raise typer.Exit(1)
+    with _maybe_status("Searching…", enable=not json_out):
+        try:
+            assert np is not None
+            assert embedding_model is not None
+            async def _search() -> Any:
+                bits = [int(x) for x in np.asarray(await embedding_model.bin_embed(query)).tolist()]
+                return await retriever.nn_search_for_ids(bits, k, kb_id=kb_id)
+            ids = asyncio.run(_search())
+            ids = _to_py_int_list(ids)
+        except Exception as e:
+            msg, code = extract_server_error(e)
+            if json_out:
+                _json_error(msg, code)
+            if msg:
+                status = f" ({code})" if code is not None else ""
+                console.print(f"[red]Search failed{status}:[/] {msg}")
+            else:
+                console.print(f"[red]Search failed:[/] {e}")
+            raise typer.Exit(1)
     try:
         import numpy as _np
         if isinstance(ids, _np.ndarray):
@@ -335,8 +253,8 @@ def retrieve(
         contexts = asyncio.run(retriever.retrieve_and_decrypt(ids, kb_id=kb_id))
 
     # format context for optional inference
-    assert RetrieverBase is not None
-    formatted = RetrieverBase.format_context([c["chunk_content"] for c in contexts])
+    assert Retriever_ is not None
+    formatted = Retriever_.format_context([c["chunk_content"] for c in contexts])
 
     # Build table for human mode
     if not json_out:
@@ -352,7 +270,6 @@ def retrieve(
         "kb_id": kb_id,
         "query": query,
         "k": k,
-        "mode": md,
         "ids": ids,
         "chunks": [
             {"id": int(cid), "content": _clean_full(str(ctx.get("chunk_content", "") or ""))}
@@ -360,15 +277,7 @@ def retrieve(
         ],
     }
 
-    # include bench metrics/log when requested
     try:
-        if bench:
-            metrics = _parse_bench_metrics(bench_raw) if json_out else {}
-            result_payload["bench"] = {
-                "metrics": metrics if metrics else None,
-                "raw": bench_raw if bench_raw else None,
-            }
-
         # inference
         if inf:
             if not json_out:
@@ -428,9 +337,9 @@ def retrieve(
                     msg, code = extract_server_error(e)
                     if msg:
                         status = f" ({code})" if code is not None else ""
-                        console.print(f"[red]Upload failed{status}:[/] {msg}")
+                        console.print(f"[red]Inference failed{status}:[/] {msg}")
                     else:
-                        console.print(f"[red]Upload failed:[/] {e}")
+                        console.print(f"[red]Inference failed:[/] {e}")
                     raise typer.Exit(1)
 
             if json_out:

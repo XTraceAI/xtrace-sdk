@@ -11,7 +11,7 @@ from rich.rule import Rule
 from rich.table import Table
 from contextlib import contextmanager
 from ._utils._prompt import secret_prompt
-from ._utils._admin_key import get_admin_key
+from ._utils._admin_key import get_admin_key, resolve_api_key_override
 from ..state import get_admin_key_cached
 from ._utils._errors import extract_server_error
 
@@ -90,17 +90,21 @@ def head(
         None, "-a", "--api_key", help="Use this API key instead of XTRACE_API_KEY from .env"
     ),
 )-> None:
+    if not kb_id.strip():
+        console.print("[red]Error:[/] KB ID must not be empty.")
+        raise typer.Exit(1)
+
     # load env
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv
         dotenv.load_dotenv()
         required = ["XTRACE_ORG_ID", "XTRACE_API_URL", "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE"]
-        if not api_key_override:
+        if api_key_override is None:
             required.append("XTRACE_API_KEY")
         env = _require_env(required)
 
     org_id = env["XTRACE_ORG_ID"]
-    api_key = api_key_override or env.get("XTRACE_API_KEY")
+    api_key = resolve_api_key_override(api_key_override, env, console=console)
     api_url = env["XTRACE_API_URL"].rstrip("/")
     exec_ctx = env["XTRACE_EXECUTION_CONTEXT_PATH"]
 
@@ -114,13 +118,13 @@ def head(
     # resolve components
     with _maybe_status("Loading XTrace components…", enable=not json_out):
         pre = get_pre()
-        SimpleRetriever   = pre.SimpleRetriever
+        Retriever_        = pre.Retriever
         XTraceIntegration = pre.XTraceIntegration
         ExecutionContext  = pre.ExecutionContext
 
-        if SimpleRetriever is None:
+        if Retriever_ is None:
             from xtrace_sdk.x_vec.retrievers.retriever import Retriever as _SR
-            SimpleRetriever = _SR
+            Retriever_ = _SR
         if XTraceIntegration is None:
             from xtrace_sdk.integrations.xtrace import XTraceIntegration as _XI
             XTraceIntegration = _XI
@@ -171,8 +175,8 @@ def head(
         if exec_context is None:
             assert ExecutionContext is not None
             exec_context = ExecutionContext.load_from_disk(env["XTRACE_PASS_PHRASE"], exec_ctx)
-        assert SimpleRetriever is not None
-        retriever = SimpleRetriever(exec_context, integration)
+        assert Retriever_ is not None
+        retriever = Retriever_(exec_context, integration)
 
         # fetch and decrypt
         chunk_ids = list(range(1, limit + 1))

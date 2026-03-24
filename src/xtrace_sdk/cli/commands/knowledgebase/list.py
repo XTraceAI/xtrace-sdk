@@ -13,6 +13,7 @@ from datetime import datetime, timezone, UTC
 from .._utils._prompt import secret_prompt
 from .._utils._getHash import resolve_api_key_hash
 from ...state import get_admin_key_cached, get_integration
+from .._utils._admin_key import resolve_api_key_override
 
 app = typer.Typer()
 console = Console()
@@ -77,12 +78,12 @@ def list_kbs(
         dotenv.load_dotenv()
         # org is always required; API key only when no override
         required = ["XTRACE_ORG_ID"]
-        if not api_key_override:
+        if api_key_override is None:
             required.append("XTRACE_API_KEY")
         env = _require_env(required)
 
     org_id = env["XTRACE_ORG_ID"]
-    api_key = api_key_override or env.get("XTRACE_API_KEY")
+    api_key = resolve_api_key_override(api_key_override, env, console=console)
     api_url = (os.getenv("XTRACE_API_URL") or "https://api.production.xtrace.ai").rstrip("/")
 
     admin_key = get_admin_key_cached(json_out=json_out, human_prompt_fn=secret_prompt)
@@ -90,6 +91,8 @@ def list_kbs(
     # use shared integration if available, else create one for this command
     _shared = get_integration()
     if _shared is not None:
+        if not _shared.admin_key and admin_key:
+            _shared.admin_key = admin_key
         integration = _shared
         _owned = False
     else:
@@ -149,7 +152,7 @@ def list_kbs(
     if json_out:
         # raw output , only modification add numeric permissionLabel (1/3/7) when available
         out: List[Dict[str, Any]] = []
-        for kb in kbs:
+        for kb in display_kbs:
             kb_out = dict(kb)
             perm_num = perms_by_kb.get(kb.get("id") or "")
             if perm_num in (1, 3, 7):

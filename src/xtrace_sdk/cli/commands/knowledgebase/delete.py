@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 import asyncio
 import typer
@@ -24,6 +25,15 @@ def safe_status(message: str)-> Iterator[None]:
         console.print(f"[dim]{message}[/]")
         yield
 
+@contextmanager
+def _maybe_status(message: str, enable: bool) -> Iterator[None]:
+    """Disable status output when enable=False (e.g., --json)."""
+    if enable:
+        with safe_status(message):
+            yield
+    else:
+        yield
+
 def _require_env(names: list[str]) -> dict[str, str]:
     missing = [n for n in names if not os.getenv(n)]
     if missing:
@@ -47,7 +57,7 @@ def delete_kb(
     ],
     json_out: bool = typer.Option(False, "--json", help="Output raw JSON results"),
 )-> None:
-    with safe_status("Loading environment…"):
+    with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy
         dotenv.load_dotenv()
         env = _require_env(["XTRACE_ORG_ID"])
@@ -55,20 +65,24 @@ def delete_kb(
     api_url = (os.getenv("XTRACE_API_URL") or "https://api.production.xtrace.ai").rstrip("/")
 
     admin_key = get_admin_key_cached(json_out=json_out, human_prompt_fn=secret_prompt)
-    console.print(Rule(style="dim"))
+    if not json_out:
+        console.print(Rule(style="dim"))
 
     # confirmation
-    ids_preview = ", ".join(kb_ids[:5]) + ("…" if len(kb_ids) > 5 else "")
-    if not typer.confirm(
-        f"You are about to permanently delete {len(kb_ids)} knowledge base(s): {ids_preview}. Continue?",
-        default=False
-    ):
-        console.print("[yellow]Aborted. No changes made.[/]")
-        raise typer.Exit(1)
+    if not json_out:
+        ids_preview = ", ".join(kb_ids[:5]) + ("…" if len(kb_ids) > 5 else "")
+        if not typer.confirm(
+            f"You are about to permanently delete {len(kb_ids)} knowledge base(s): {ids_preview}. Continue?",
+            default=False
+        ):
+            console.print("[yellow]Aborted. No changes made.[/]")
+            raise typer.Exit(1)
 
     # use shared integration if available, else create one for this command
     _shared = get_integration()
     if _shared is not None:
+        if not _shared.admin_key and admin_key:
+            _shared.admin_key = admin_key
         integration = _shared
         _owned = False
     else:
@@ -82,7 +96,7 @@ def delete_kb(
 
     try:
         for kb_id in kb_ids:
-            with safe_status(f"Deleting KB {kb_id}…"):
+            with _maybe_status(f"Deleting KB {kb_id}…", enable=not json_out):
                 try:
                     asyncio.run(integration.delete_kb(kb_id))
                     results.append({"id": kb_id, "status": "deleted"})
@@ -107,9 +121,7 @@ def delete_kb(
                 pass
 
     if json_out:
-        # raw-ish results per KB
-        from rich.json import JSON
-        console.print(JSON.from_data(results))
+        typer.echo(json.dumps(results, ensure_ascii=False))
         return
 
     table = Table(show_header=True, header_style="bold", expand=True)

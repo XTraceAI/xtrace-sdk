@@ -51,8 +51,8 @@ def _require_env(names: list[str]) -> dict[str, str]:
         raise typer.Exit(2)
     return {n: os.environ[n] for n in names}
 
-def _empty_meta() -> Dict[str, Any]:
-    return {"tag1": None, "tag2": None, "tag3": None, "tag4": None, "tag5": None}
+def _default_meta() -> Dict[str, Any]:
+    return {"tag1": "cli", "tag2": None, "tag3": None, "tag4": None, "tag5": None}
 
 def _silence_transformers_future_warning()-> None:
     warnings.filterwarnings(
@@ -88,7 +88,7 @@ def upsert(
     console.print(f"[dim]KB[/]: [bold blue]{kb_id}[/]")
     console.print(Rule(style="dim"))
 
-    collection = [{"chunk_content": text, "meta_data": _empty_meta()}]
+    collection = [{"chunk_content": text, "meta_data": _default_meta()}]
 
     with safe_status("Loading XTrace components…"):
         pre = get_pre()
@@ -139,7 +139,7 @@ def upsert(
             try:
                 # Load embedding model and create binary vector(s)
                 embed_bytes = Path(env["XTRACE_EMBEDDING_MODEL_PATH"]).read_bytes()
-                embedding_model: _EmbeddingProto = pkl.loads(embed_bytes)["embedding"]
+                embedding_model: _EmbeddingProto = pkl.loads(embed_bytes)
 
                 # mypy expects list[list[float]] → convert bin_embed output to floats
                 async def _embed_all() -> list[Sequence[int]]:
