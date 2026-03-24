@@ -3,7 +3,7 @@
 <!-- Replace with your banner gif once added to assets/ -->
 <img src="assets/xtrace_orbital.gif" width="600" alt="XTrace SDK">
 
-<p><strong>The encrypted vector database.<br>Your data never leaves your machine in plaintext.</strong></p>
+<p><strong> The encrypted vector database.<br>Your data never leaves your machine in plaintext. </strong></p>
 
 <p>
   <a href="https://pypi.org/project/xtrace-ai-sdk/"><img src="https://img.shields.io/pypi/v/xtrace-ai-sdk?color=blue&label=PyPI" alt="PyPI"></a>
@@ -14,32 +14,15 @@
 
 <h4>
   <a href="https://docs.xtrace.ai">Documentation</a> |
-  <a href="#-quick-start">Quick Start</a> |
   <a href="https://x.com/XTrace_ai">X</a> |
   <a href="https://www.linkedin.com/company/xtrace-ai/">LinkedIn</a>
-</h4>
-
+</h4> 
 <sub>Manage your AI memory &rarr; <a href="https://mem.xtrace.ai">mem.xtrace.ai</a></sub>
-
 </div>
 
 ---
 
-<details open>
-<summary><b>Table of Contents</b></summary>
-
-- [What is XTrace?](#-what-is-xtrace)
-- [How It Works](#-how-it-works)
-- [Quick Start](#-quick-start)
-- [Verify the Encryption](#-verify-the-encryption)
-- [Install](#-install)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [License](#-license)
-
-</details>
-
-## What is XTrace?
+# What is XTrace?
 
 Every vector database on the market requires you to hand your data to a third party in plaintext. XTrace doesn't. Your documents and embedding vectors are encrypted **on your machine** before anything is transmitted. The server stores and searches over ciphertexts — it computes nearest-neighbor results without ever seeing the plaintext. Your data stays yours, even during search.
 
@@ -66,38 +49,35 @@ The SDK has two modules:
 └────────────────────────┘                └─────────────────────────┘
   Secret key never leaves                   Zero knowledge
 ```
+XTrace encrypts everything on your machine before anything touches the network. Your content is embedded locally with a model of your choice, and both the resulting vectors and the raw text are encrypted with Paillier homomorphic encryption and AES-256, respectively. The server only ever stores and operates on ciphertexts. When you search, your query is encrypted the same way. The secret key never leaves your environment, and the server never sees a single byte of plaintext. [Verify the encryption](#verify-the-encryption)
 
-XTrace encrypts everything on your machine before anything touches the network. Your content is embedded locally with a model of your choice, and both the resulting vectors and the raw text are encrypted with Paillier homomorphic encryption and AES-256, respectively. The server only ever stores and operates on ciphertexts. When you search, your query is encrypted the same way. The secret key never leaves your environment, and the server never sees a single byte of plaintext.
-
-<details>
-<summary><b>Storing data</b></summary>
-
-1. Your text is embedded locally using the model of your choice (Sentence Transformers, OpenAI, or Ollama).
-2. The float embeddings are converted to binary vectors.
-3. Each binary vector is encrypted with Paillier homomorphic encryption — this is what allows the server to compute on your data without seeing it.
-4. The document content is separately encrypted with AES-256.
-5. Only the ciphertexts (encrypted vectors + encrypted content) are sent to the XTrace server.
-
-</details>
-
-<details>
-<summary><b>Querying</b></summary>
-
-1. Your query text is embedded and encrypted the same way — binary vector through Paillier, nothing leaves in plaintext.
-2. The encrypted query is sent to the server.
-3. The server computes Hamming distances between the encrypted query and every stored encrypted vector. This is possible because of the homomorphic property of Paillier — the server never decrypts anything.
-4. The server returns the encrypted distances to your machine.
-5. You decrypt the distances locally and select the top-K nearest results.
-6. You fetch the corresponding encrypted chunks and AES-decrypt them on your machine to get the plaintext results.
-
-</details>
-
-## Quick Start
+# Quick Start
 
 > [!TIP]
-> **Create a free account at [app.xtrace.ai](https://app.xtrace.ai)** to get your API key and org ID. The free tier is rate-limited but fully functional.
+> 🚀 **Create a free account at [app.xtrace.ai](https://app.xtrace.ai)** to get your API key and org ID. The free tier is rate-limited but fully functional.
 
-### CLI
+
+## Install
+
+```bash
+# Base SDK
+uv pip install xtrace-ai-sdk
+
+# With local embedding support (Sentence Transformers)
+uv pip install "xtrace-ai-sdk[embedding]"
+```
+
+Requires Python 3.11+.
+
+## Documentation
+
+Full documentation at [docs.xtrace.ai](https://docs.xtrace.ai), or build locally:
+
+```bash
+cd docs && make html
+```
+
+## CLI
 
 The fastest way to go from zero to search results:
 
@@ -110,10 +90,9 @@ xtrace xvec load ./my-docs/ <KB_ID>            # encrypt and upload documents
 xtrace xvec retrieve <KB_ID> "your query"      # search
 ```
 
-### Python SDK
+## Python SDK
 
-<details>
-<summary>Full async example</summary>
+Full async example:
 
 ```python
 import asyncio
@@ -156,8 +135,6 @@ async def main():
 asyncio.run(main())
 ```
 
-</details>
-
 ## Verify the Encryption
 
 This repo exists so you can verify the encryption yourself. The tests run fully offline and require no XTrace account:
@@ -169,36 +146,10 @@ pytest tests/x_vec/
 
 `test_paillier_encryption.py` and `test_paillier_lookup_encryption.py` verify encrypt/decrypt round-trips and homomorphic addition on ciphertexts — the same primitives the SDK uses when sending data to XTrace. The secret key never leaves your machine.
 
-## Install
-
-```bash
-# Base SDK
-uv pip install xtrace-ai-sdk
-
-# With local embedding support (Sentence Transformers)
-uv pip install "xtrace-ai-sdk[embedding]"
-
-# With CLI
-uv pip install "xtrace-ai-sdk[cli]"
-
-# Everything
-uv pip install "xtrace-ai-sdk[embedding,cli]"
-```
-
-Requires Python 3.11+.
-
-## Documentation
-
-Full documentation at [docs.xtrace.ai](https://docs.xtrace.ai), or build locally:
-
-```bash
-cd docs && make html
-```
-
-## Contributing
+# Contributing
 
 We welcome contributions. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## License
+# License
 
 Apache 2.0 — see [LICENSE](LICENSE).
