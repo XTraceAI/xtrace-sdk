@@ -54,9 +54,7 @@ def _status(console: Console | None, message: str) -> Iterator[None]:
 
 @dataclass
 class Preloaded:
-    SimpleRetriever: Any | None = None
-    ParallelRetriever: Any | None = None
-    RetrieverBase: Any | None = None
+    Retriever: Any | None = None
     XTraceIntegration: Any | None = None
     ExecutionContext: Any | None = None
     Embedding: Any | None = None
@@ -76,9 +74,7 @@ def preload_components(console: Console|None) -> None:
     with _status(console, "Preloading XTrace components…"):
         try:
             # Core classes
-            from xtrace_sdk.x_vec.retrievers.retriever import Retriever as SimpleRetriever
-            from xtrace_sdk.x_vec.retrievers.retriever import Retriever as ParallelRetriever
-            from xtrace_sdk.x_vec.retrievers.retriever import Retriever as RetrieverBase
+            from xtrace_sdk.x_vec.retrievers.retriever import Retriever
             from xtrace_sdk.integrations.xtrace import XTraceIntegration
             from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
             from xtrace_sdk.x_vec.inference.embedding import Embedding
@@ -88,9 +84,7 @@ def preload_components(console: Console|None) -> None:
             import pickle as _pkl
             import numpy as _np
             
-            _pre.SimpleRetriever = SimpleRetriever
-            _pre.ParallelRetriever = ParallelRetriever
-            _pre.RetrieverBase = RetrieverBase
+            _pre.Retriever = Retriever
             _pre.XTraceIntegration = XTraceIntegration
             _pre.ExecutionContext = ExecutionContext
             _pre.Embedding = Embedding
@@ -171,9 +165,17 @@ def load_once(console: Console | None = None) -> None:
 def readiness_messages() -> list[str]:
     msgs = []
     if not state.exec_context:
-        msgs.append("No execution context found. Run: init")
+        exec_path = os.getenv("XTRACE_EXECUTION_CONTEXT_PATH")
+        if not exec_path:
+            msgs.append("No execution context configured (.env missing XTRACE_EXECUTION_CONTEXT_PATH). Run: init")
+        else:
+            msgs.append("No execution context found. Run: init")
     if not state.embed_model:
-        msgs.append("No embedding model found. Run: init")
+        embed_path = os.getenv("XTRACE_EMBEDDING_MODEL_PATH")
+        if not embed_path:
+            msgs.append("No embedding model configured (.env missing XTRACE_EMBEDDING_MODEL_PATH). Run: init")
+        else:
+            msgs.append("No embedding model found. Run: init")
     if not msgs:
         msgs.append("XTrace SDK session is ready.")
     return msgs + (state.notes or [])
