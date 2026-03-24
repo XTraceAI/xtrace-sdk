@@ -2,9 +2,11 @@ import asyncio
 import base64
 import json
 import os
+import ssl
 from typing import Any, Optional, Union
 
 import aiohttp
+import certifi
 import gmpy2
 import msgpack
 
@@ -35,9 +37,11 @@ class XTraceIntegration:
         api_key: str | None = None,
         admin_key: str | None = None,
         api_url: str = "https://api.production.xtrace.ai",
+        admin_api_url: str | None = None,
     ) -> None:
         self.org_id = org_id
         self.api_url = api_url
+        self.admin_api_url = (admin_api_url or os.environ.get("XTRACE_ADMIN_API_URL") or "https://api.dev.xtrace.ai/api").rstrip("/")
         self.batch_size = 500
         self.session: aiohttp.ClientSession | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -68,8 +72,9 @@ class XTraceIntegration:
                         await self.session.close()
                     except Exception:
                         pass
+                ssl_ctx = ssl.create_default_context(cafile=certifi.where())
                 self.session = aiohttp.ClientSession(
-                    connector=aiohttp.TCPConnector(limit=50, enable_cleanup_closed=True)
+                    connector=aiohttp.TCPConnector(limit=50, enable_cleanup_closed=True, ssl=ssl_ctx)
                 )
                 self._loop = loop
         return self.session
@@ -96,7 +101,7 @@ class XTraceIntegration:
     def _admin_headers(self) -> dict[str, str]:
         if not self.admin_key:
             raise RuntimeError("admin_key is required for admin operations. Pass it to __init__ or set XTRACE_ADMIN_KEY.")
-        return {"xtrace-admin-key": self.admin_key, "xtrace-org-id": self.org_id}
+        return {"x-xtrace-key": self.admin_key, "x-xtrace-org-id": self.org_id}
 
     def _encode_index(self, index_item: gmpy2.mpz) -> str:
         return base64.b64encode(int(index_item).to_bytes((index_item.bit_length() + 7) // 8, "little")).decode("utf-8")
@@ -648,7 +653,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.get(  # type: ignore
-            f"{self.api_url}/api/v1/kbs",
+            f"{self.admin_api_url}/v1/kbs",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()
@@ -666,7 +671,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.get(  # type: ignore
-            f"{self.api_url}/api/v1/kbs/{kb_id}",
+            f"{self.admin_api_url}/v1/kbs/{kb_id}",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()
@@ -682,7 +687,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.get(  # type: ignore
-            f"{self.api_url}/api/v1/keys",
+            f"{self.admin_api_url}/v1/keys",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()
@@ -700,7 +705,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.get(  # type: ignore
-            f"{self.api_url}/api/v1/keys/{key_hash}/permissions",
+            f"{self.admin_api_url}/v1/keys/{key_hash}/permissions",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()
@@ -722,7 +727,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.put(  # type: ignore
-            f"{self.api_url}/api/v1/keys/{key_hash}/permissions/{kb_id}",
+            f"{self.admin_api_url}/v1/keys/{key_hash}/permissions/{kb_id}",
             headers=self._admin_headers(),
             json={"permission": permission},
         ) as res:
@@ -743,7 +748,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.post(  # type: ignore
-            f"{self.api_url}/api/v1/kbs",
+            f"{self.admin_api_url}/v1/kbs",
             headers=self._admin_headers(),
             json={"name": name, "description": description},
         ) as res:
@@ -760,7 +765,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.delete(  # type: ignore
-            f"{self.api_url}/api/v1/kbs/{kb_id}",
+            f"{self.admin_api_url}/v1/kbs/{kb_id}",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()
@@ -779,7 +784,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.post(  # type: ignore
-            f"{self.api_url}/api/v1/keys",
+            f"{self.admin_api_url}/v1/keys",
             headers=self._admin_headers(),
             json={"name": name, "description": description},
         ) as res:
@@ -796,7 +801,7 @@ class XTraceIntegration:
         """
         await self.init_session()
         async with self.session.patch(  # type: ignore
-            f"{self.api_url}/api/v1/keys/{key_hash}/status/revoke",
+            f"{self.admin_api_url}/v1/keys/{key_hash}/status/revoke",
             headers=self._admin_headers(),
         ) as res:
             res.raise_for_status()

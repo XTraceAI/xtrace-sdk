@@ -2768,6 +2768,7 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "boto3" },
+    { name = "certifi" },
     { name = "gmpy2" },
     { name = "msgpack" },
     { name = "numpy" },
@@ -2795,6 +2796,7 @@ dev = [
 ]
 embedding = [
     { name = "sentence-transformers" },
+    { name = "torch" },
 ]
 
 [package.dev-dependencies]
@@ -2815,6 +2817,7 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.12.14" },
     { name = "boto3", specifier = ">=1.39.4" },
+    { name = "certifi", specifier = ">=2024.2.2" },
     { name = "gmpy2", specifier = ">=2.2.1" },
     { name = "msgpack" },
     { name = "numpy", specifier = ">=2.3.1" },
@@ -2830,6 +2833,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'dev'", specifier = ">=5.0.0" },
     { name = "sentence-transformers", marker = "extra == 'embedding'", specifier = ">=5.0.0" },
     { name = "sphinx", marker = "extra == 'dev'", specifier = ">=8.2.3" },
+    { name = "torch", marker = "extra == 'embedding'", specifier = ">=1.11.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.12.0" },
     { name = "typing-extensions", specifier = ">=4.14.1" },

@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import json as _json_mod
+import ssl
 from typing import Any
 
 import aiohttp
+import certifi
 
 
 class _Response:
@@ -34,12 +36,14 @@ def _request(
     timeout: int = 20,
 ) -> _Response:
     async def _run() -> _Response:
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
         async with aiohttp.ClientSession() as session, session.request(
             method,
             url,
             headers=headers,
             json=json,
             timeout=aiohttp.ClientTimeout(total=timeout),
+            ssl=ssl_ctx,
         ) as resp:
             text = await resp.text()
             try:

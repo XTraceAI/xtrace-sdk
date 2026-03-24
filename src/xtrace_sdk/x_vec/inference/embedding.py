@@ -1,7 +1,9 @@
 import os
+import ssl
 from typing import Any
 
 import aiohttp
+import certifi
 import numpy as np
 
 
@@ -60,12 +62,13 @@ class Embedding:
         :raises ValueError: If the embedding dimension does not match the expected dimension.
         """
         float_embd: np.ndarray
+        ssl_ctx = ssl.create_default_context(cafile=certifi.where())
 
         if self.provider == "ollama":
             if self.url is None:
                 raise RuntimeError("URL not configured for ollama provider")
             async with aiohttp.ClientSession() as session, \
-                    session.post(self.url, json={"model": self.model_name, "prompt": text}) as resp:
+                    session.post(self.url, json={"model": self.model_name, "prompt": text}, ssl=ssl_ctx) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
                 float_embd = np.asarray(data.get("embedding", []))
@@ -78,6 +81,7 @@ class Embedding:
                         self.url,
                         headers={"Authorization": f"Bearer {os.getenv('OPENAI_API_KEY')}"},
                         json={"model": self.model_name, "input": text, "encoding_format": "float"},
+                        ssl=ssl_ctx,
                     ) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
