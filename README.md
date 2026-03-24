@@ -50,6 +50,56 @@ The SDK has two modules:
 
 ## How It Works
 
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "ui-monospace, SFMono-Regular, monospace", "fontSize": "13px", "edgeLabelBackground": "#ffffff"}}}%%
+flowchart TB
+
+    subgraph client ["🔐  Your Machine  —  secret key never leaves"]
+        direction TB
+        in1[/"Raw Text · Documents"/]
+        emb["Embed\nSentence Transformers · OpenAI · Ollama"]
+        bin["Float Vector  ›  Binary Vector"]
+        enc_v["Paillier Homomorphic Encrypt\nvectors"]
+        enc_c["AES-256 Encrypt\ncontent"]
+
+        in1 --> emb --> bin --> enc_v
+        in1 --> enc_c
+    end
+
+    subgraph server ["⚡  XTrace Server  —  zero knowledge"]
+        direction TB
+        store_v[("Encrypted\nVectors")]
+        store_c[("Encrypted\nContent")]
+        hamming["Hamming Distance\non Ciphertexts"]
+
+        store_v --> hamming
+    end
+
+    subgraph qflow ["🔍  Query & Retrieval"]
+        direction TB
+        q_in[/"Query Text"/]
+        q_enc["Embed  ›  Binary  ›  Paillier Encrypt"]
+
+        q_in --> q_enc
+    end
+
+    enc_v  -- "encrypted vectors"  --> store_v
+    enc_c  -- "encrypted content"  --> store_c
+    q_enc  -- "encrypted query"    --> hamming
+    hamming -- "encrypted distances" --> q_dec
+
+    q_dec["Decrypt Distances\nclient-side only"]
+    q_dec --> topk["Select Top-K IDs"]
+    topk  -- "fetch encrypted chunks" --> store_c
+    store_c -- "encrypted chunks"  --> aes_dec
+    aes_dec["AES Decrypt\nclient-side only"]
+    aes_dec --> result[/"Plaintext Results"/]
+
+    style client  fill:#eff6ff,stroke:#2563eb,color:#1e3a5f
+    style server  fill:#fffbeb,stroke:#d97706,color:#451a03
+    style qflow   fill:#f0fdf4,stroke:#16a34a,color:#052e16
+```
+
 XTrace encrypts everything on your machine before anything touches the network. Your content is embedded locally with a model of your choice, and both the resulting vectors and the raw text are encrypted with Paillier homomorphic encryption and AES-256, respectively. The server only ever stores and operates on ciphertexts. When you search, your query is encrypted the same way. The secret key never leaves your environment, and the server never sees a single byte of plaintext.
 
 <details>
