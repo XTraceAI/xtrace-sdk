@@ -1,7 +1,7 @@
 XTrace CLI Quick Start
 =================================
 
-This section walks you through setting up your environment, launching the interactive XTrace SDK CLI shell, and running the init workflow for a first time setup. The CLI is the quickest way to create an execution context, configure your embedding model, and save the required settings to a .env file so the SDK and tools work together out of the box.
+This section walks you through setting up your environment and running the init workflow for a first time setup. The CLI is the quickest way to create an execution context, configure your embedding model, and save the required settings to a .env file so the SDK and tools work together out of the box.
 
 Install dependencies
 --------------------------------------------------
@@ -13,35 +13,79 @@ Create a virtual environment for sdk dependencies and install the CLI:
     source .venv/bin/activate
     pip install -e ".[cli]"
 
-Start shell
+Using the CLI
 --------------------------------------------------
-Enter a CLI shell with
+Commands are invoked directly from the terminal:
 
 .. code-block:: bash
 
-    xtrace
+    xtrace <command> [ARGS]
 
-and view a list of available commands with
+Run ``xtrace --help`` to view all available commands:
 
-.. code-block::
+.. code-block:: bash
 
-    > help
+    xtrace --help
+
+You can also start an interactive shell with tab completion and command history:
+
+.. code-block:: bash
+
+    xtrace shell
+
+Inside the shell, omit the ``xtrace`` prefix (e.g. ``xvec load ...`` instead of ``xtrace xvec load ...``).
 
 Initialize SDK
 --------------------------------------------------
-Inside the CLI shell, run ``init`` to configure the SDK:
+Run ``init`` to configure the SDK:
 
-.. code-block::
+.. code-block:: bash
 
-    > init
+    xtrace init
 
 The init command configures your local SDK repo in the following ways:
 
 - connects your XTrace account via your ``API_KEY`` and ``ORG_ID``
 - creates or loads a local ``Execution Context``, which is a unique fingerprint from which to interact with your stored data
-- loads a local ``Embedding Model``, which embeds data for storage and retrieval in a vector space
+- loads an ``Embedding Model``, which embeds data for storage and retrieval in a vector space
 
 You only need to run ``init`` once to persist your configuration, with information automatically being stored in a .env file and a ``/data`` directory.
+
+Key concepts
+--------------------------------------------------
+
+**Execution context** — your private cryptographic state. It holds a Paillier key pair
+(for encrypting vectors) and an AES key (for encrypting content), all locked by a
+passphrase you choose during ``init``. Every chunk you store and every query you run uses
+this context. Losing the passphrase means losing the ability to decrypt your data.
+
+**Embedding model** — converts text into binary vectors for encrypted storage and search.
+The model you select during ``init`` must be the same one used for both uploading and
+querying. Changing models later requires re-uploading your data.
+
+**Knowledge base** — a namespace on XTrace where your encrypted chunks live. Create one
+with ``xtrace kb create-kb`` before loading data.
+
+For a deeper look at how the encryption works, see the :doc:`quickstart` (Python SDK tutorial).
+
+Your first query
+--------------------------------------------------
+
+After running ``init``, four commands take you from an empty knowledge base to search results:
+
+.. code-block:: bash
+
+    # 1. Create a knowledge base (note the KB ID in the output)
+    xtrace kb create-kb my-first-kb
+
+    # 2. Load documents from a local folder
+    xtrace xvec load ./my-docs/ <KB_ID>
+
+    # 3. Search
+    xtrace xvec retrieve <KB_ID> "your query here"
+
+    # 4. (Optional) Search with LLM synthesis
+    xtrace xvec retrieve <KB_ID> "your query" --inference openai --model gpt-4o
 
 Command groups
 --------------------------------------------------
@@ -69,8 +113,8 @@ Commands are organized by submodule. All subgroups and shared commands are acces
 | ``describe-kb``   | Describe one or more knowledge bases by ID.              |
 +-------------------+----------------------------------------------------------+
 
-KB admin commands require ``ADMIN_KEY`` input, entered once per ``xtrace`` session.
-To configure your repo with implicit ``ADMIN_KEY`` privileges, run ``init --admin``.
+KB admin commands require ``ADMIN_KEY`` input, entered once per shell session.
+To save the key to your ``.env`` for implicit admin access, run ``xtrace init --admin``.
 
 **x-vec** — ``xtrace xvec <command>``
 

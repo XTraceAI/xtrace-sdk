@@ -6,21 +6,38 @@
 XTrace SDK documentation
 ========================
 
-XTrace is an encrypted vector and memory database. Your document content and embedding
-vectors are encrypted on the client before storage; the server computes nearest-neighbor
-search on ciphertexts and never sees the underlying data.
+What is XTrace?
+---------------
+
+Traditional vector databases require you to hand your data to a third party in plaintext. XTrace
+is different: your document content is AES-encrypted and your embedding vectors are
+homomorphically encrypted **before they leave your machine**. The server stores and searches
+over ciphertexts — computing nearest-neighbor Hamming distances directly on encrypted
+vectors — without ever seeing the underlying data. When results come back, you decrypt them
+locally.
+
+This means you get semantic search with the same privacy guarantees as if the data never
+left your laptop.
 
 The SDK has two modules: **x-vec** for encrypted vector search, and **x-mem** for
 encrypted agent memory (coming soon). Both share the same credentials, execution context,
 and XTrace integration.
 
-This documentation is organized for three audiences:
 
-- **Potential users** — start with the `README <https://github.com/XTraceAI/xtrace-vec-sdk>`_
-  for a brief description of what XTrace does.
-- **New users** — start with :doc:`manual_rst/install` then
-  :doc:`manual_rst/quickstart` for a concept-first walkthrough.
-- **Experienced users** — jump to the API reference or the specific guide you need.
+Getting started
+---------------
+
+.. note::
+
+   **Create a free account** at `app.xtrace.ai <https://app.xtrace.ai>`_ to get your
+   API key and org ID. The free tier is rate-limited but fully functional.
+
+Choose your path:
+
+- **Python SDK** — :doc:`manual_rst/install` then :doc:`manual_rst/quickstart` for a
+  concept-first walkthrough with full code examples.
+- **CLI** — :doc:`manual_rst/install` then :doc:`manual_rst/cli_quickstart` for a
+  terminal-first workflow that gets you querying in four commands.
 
 
 .. toctree::
@@ -34,9 +51,9 @@ This documentation is organized for three audiences:
    :maxdepth: 2
    :caption: x-vec
 
+   manual_rst/embedding
    manual_rst/xtrace
    manual_rst/inference
-   manual_rst/embedding
    manual_rst/metadata
 
 .. toctree::
