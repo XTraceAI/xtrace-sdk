@@ -41,7 +41,7 @@ class XTraceIntegration:
     ) -> None:
         self.org_id = org_id
         self.api_url = api_url
-        self.admin_api_url = (admin_api_url or os.environ.get("XTRACE_ADMIN_API_URL") or "https://api.dev.xtrace.ai/api").rstrip("/")
+        self.admin_api_url = (admin_api_url or os.environ.get("XTRACE_ADMIN_API_URL") or "https://api.xtrace.ai/api").rstrip("/")
         self.batch_size = 500
         self.session: aiohttp.ClientSession | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
