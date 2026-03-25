@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
 import re
+import json
 import asyncio
 import typer
 from pathlib import Path
@@ -33,6 +34,15 @@ def safe_status(message: str) -> Iterator[None]:
         console.print(f"[dim]{message}[/]")
         yield
 
+@contextmanager
+def _maybe_status(message: str, enable: bool) -> Iterator[None]:
+    """Disable spinner output when enable=False (e.g., --json)."""
+    if enable:
+        with safe_status(message):
+            yield
+    else:
+        yield
+
 def _require_env(*names: str) -> dict[str, str]:
     missing = [n for n in names if not os.getenv(n)]
     if missing:
@@ -61,8 +71,8 @@ def _parse_filetypes(s: str | None) -> Set[str] | None:
     # ensure no leading dots
     return {p[1:] if p.startswith(".") else p for p in parts}
 
-def _empty_meta() -> Dict[str, Any]:
-    return {"tag1": None, "tag2": None, "tag3": None, "tag4": None, "tag5": None}
+def _default_meta() -> Dict[str, Any]:
+    return {"tag1": "cli", "tag2": None, "tag3": None, "tag4": None, "tag5": None}
 
 def _to_chunk_collection(docs: Iterable) -> List[Dict[str, Any]]:
     """
@@ -74,7 +84,7 @@ def _to_chunk_collection(docs: Iterable) -> List[Dict[str, Any]]:
         content = getattr(doc, "page_content", doc)
         if content is None:
             continue
-        out.append({"chunk_content": str(content), "meta_data": _empty_meta()})
+        out.append({"chunk_content": str(content), "meta_data": _default_meta()})
     return out
 
 def _iter_matching_files(root: Path, types: Set[str] | None) -> Iterable[Path]:
@@ -116,6 +126,11 @@ def _collect_from_folder(folder: str, types: Set[str] | None) -> Tuple[List[Dict
 
     return collection, matched_files
 
+def _json_error(msg: str | None, code: int | None, **extra: Any) -> None:
+    payload: Dict[str, Any] = {"error": {"message": msg or "Unknown error", "status": code}}
+    payload["error"].update(extra)
+    typer.echo(json.dumps(payload, ensure_ascii=False))
+
 @app.command("load", help="Load data into an XTrace Knowledge Base.")
 def load(
     folder_path: str = typer.Argument(..., help="Path to the folder containing data"),
@@ -125,9 +140,10 @@ def load(
         help="Comma-separated list of file types to include, e.g. 'txt,json' or '[txt, json]'. "
              "Types are matched to file extensions (no dot), case-insensitive."
     ),
+    json_out: bool = typer.Option(False, "--json", help="Output JSON summary"),
 ) -> None:
     # load .env
-    with safe_status("Loading environment…"):
+    with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy import
         dotenv.load_dotenv()
         env = _require_env(
@@ -136,17 +152,21 @@ def load(
         )
 
     types = _parse_filetypes(filetypes)
-    if types is not None and not types:
-        console.print("[yellow]No valid file types provided after parsing filter.[/]")
+    if filetypes is not None and not types:
+        if json_out:
+            _json_error("No valid file types provided after parsing filter.", None)
+        else:
+            console.print("[yellow]No valid file types provided after parsing filter.[/]")
         raise typer.Exit(2)
 
-    types_msg = f"  •  [dim]Types[/]: [bold]{', '.join(sorted(types))}[/]" if types else ""
-    console.print(
-        f"[dim]KB[/]: [bold blue]{kb_id}[/]  •  [dim]Folder[/]: [bold white]{folder_path}[/]{types_msg}"
-    )
-    console.print(Rule(style="dim"))
+    if not json_out:
+        types_msg = f"  •  [dim]Types[/]: [bold]{', '.join(sorted(types))}[/]" if types else ""
+        console.print(
+            f"[dim]KB[/]: [bold blue]{kb_id}[/]  •  [dim]Folder[/]: [bold white]{folder_path}[/]{types_msg}"
+        )
+        console.print(Rule(style="dim"))
 
-    with safe_status("Loading XTrace components…"):
+    with _maybe_status("Loading XTrace components…", enable=not json_out):
         _silence_transformers_future_warning()
 
         pre = get_pre()
@@ -186,22 +206,22 @@ def load(
     _owned = _shared is None
     try:
         # scan and chunk local files (filtered)
-        with safe_status("Scanning files and preparing chunks…"):
+        with _maybe_status("Scanning files and preparing chunks…", enable=not json_out):
             collection, matched_files = _collect_from_folder(folder_path, types)
 
         if matched_files == 0:
-            if types:
+            if json_out:
+                _json_error("No files matched" + (f" the provided types ({', '.join(sorted(types))})" if types else ""), None, kb_id=kb_id)
+            elif types:
                 console.print(f"[yellow]No files matched the provided types ({', '.join(sorted(types))}).[/]")
             else:
                 console.print("[yellow]No readable files found.[/]")
             raise typer.Exit(1)
 
-        console.print(f"[dim]Matched files[/]: [bold]{matched_files}[/]")
-        try:
-            n_chunks = len(collection)
+        n_chunks = len(collection)
+        if not json_out:
+            console.print(f"[dim]Matched files[/]: [bold]{matched_files}[/]")
             console.print(f"[dim]Prepared[/]: [bold cyan]{n_chunks} chunk(s)[/]")
-        except Exception:
-            n_chunks = None
 
         exec_context = get_exec_context(load_if_missing=False)
         if exec_context is None:
@@ -218,28 +238,47 @@ def load(
             return list(await asyncio.gather(*[
                 embedding_model.bin_embed(c["chunk_content"]) for c in collection
             ]))
-        vectors = asyncio.run(_embed_all())
+        try:
+            vectors = asyncio.run(_embed_all())
+        except Exception as e:
+            msg, code = extract_server_error(e)
+            if json_out:
+                _json_error(msg or str(e), code, kb_id=kb_id)
+            elif msg:
+                status = f" ({code})" if code is not None else ""
+                console.print(f"[red]Embedding failed{status}:[/] {msg}")
+            else:
+                console.print(f"[red]Embedding failed:[/] {e}")
+            raise typer.Exit(1)
 
         index, db = asyncio.run(dl.load_data_from_memory(collection, vectors))  # type: ignore[arg-type]
-        console.print(Rule(style="dim"))
+        if not json_out:
+            console.print(Rule(style="dim"))
 
         # upload
-        with safe_status(f"Uploading encrypted data to KB '{kb_id}'…"):
+        with _maybe_status(f"Uploading encrypted data to KB '{kb_id}'…", enable=not json_out):
             try:
                 asyncio.run(dl.dump_db(db, index=index, kb_id=kb_id))
             except Exception as e:
                 msg, code = extract_server_error(e)
-                if msg:
+                if json_out:
+                    _json_error(msg or str(e), code, kb_id=kb_id)
+                elif msg:
                     status = f" ({code})" if code is not None else ""
                     console.print(f"[red]Upload failed{status}:[/] {msg}")
                 else:
                     console.print(f"[red]Upload failed:[/] {e}")
                 raise typer.Exit(1)
 
-        if n_chunks is not None:
-            console.print(f"[bold green]Loaded {n_chunks} chunk(s)[/] → KB [bold blue]{kb_id}[/]")
+        if json_out:
+            typer.echo(json.dumps({
+                "kb_id": kb_id,
+                "matched_files": matched_files,
+                "chunks_loaded": n_chunks,
+                "status": "success",
+            }, ensure_ascii=False))
         else:
-            console.print(f"Loaded data → KB [bold]{kb_id}[/]")
+            console.print(f"[bold green]Loaded {n_chunks} chunk(s)[/] → KB [bold blue]{kb_id}[/]")
     finally:
         if _owned:
             try:

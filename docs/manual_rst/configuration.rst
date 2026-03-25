@@ -1,7 +1,7 @@
 Configuration
 =============
 
-The XTrace Vec is designed to be highly configurable. You can configure it via environment variables or by passing parameters directly to classes and methods.
+The XTrace SDK is designed to be highly configurable. You can configure it via environment variables or by passing parameters directly to classes and methods.
 
 
 Cryptography Configuration

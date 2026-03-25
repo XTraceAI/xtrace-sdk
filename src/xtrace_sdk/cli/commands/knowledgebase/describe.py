@@ -11,7 +11,7 @@ from datetime import datetime, timezone, UTC
 from .._utils._prompt import secret_prompt
 from .._utils._getHash import resolve_api_key_hash
 import asyncio
-from .._utils._admin_key import get_admin_key
+from .._utils._admin_key import get_admin_key, resolve_api_key_override
 from ...state import get_admin_key_cached, get_integration
 
 from typing import Annotated
@@ -89,12 +89,12 @@ def describe_kb(
         import dotenv  # lazy
         dotenv.load_dotenv()
         required = ["XTRACE_ORG_ID"]
-        if not api_key_override:
+        if api_key_override is None:
             required.append("XTRACE_API_KEY")
         env = _require_env(required)
 
     org_id = env["XTRACE_ORG_ID"]
-    api_key = api_key_override or env.get("XTRACE_API_KEY")
+    api_key = resolve_api_key_override(api_key_override, env, console=console)
     api_url = (os.getenv("XTRACE_API_URL") or "https://api.production.xtrace.ai").rstrip("/")
 
     # admin key (env first; else prompt; prompt goes to STDERR in --json)
@@ -103,6 +103,8 @@ def describe_kb(
     # use shared integration if available, else create one for this command
     _shared = get_integration()
     if _shared is not None:
+        if not _shared.admin_key and admin_key:
+            _shared.admin_key = admin_key
         integration = _shared
         _owned = False
     else:

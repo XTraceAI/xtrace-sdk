@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio
+import os
 from typing import Any, Optional
 
 
@@ -23,12 +24,16 @@ def resolve_api_key_hash(
             keys = asyncio.run(integration.list_api_keys())
         else:
             from xtrace_sdk.cli.commands._utils._aio_http import get
+            admin_api_url = (
+                os.environ.get("XTRACE_ADMIN_API_URL")
+                or "https://api.dev.xtrace.ai/api"
+            ).rstrip("/")
             headers = {
                 "content-type": "application/json",
-                "xtrace-admin-key": admin_key,
-                "xtrace-org-id": org_id,
+                "x-xtrace-key": admin_key,
+                "x-xtrace-org-id": org_id,
             }
-            r = get("https://api.production.xtrace.ai/api/v1/keys", headers=headers)
+            r = get(f"{admin_api_url}/v1/keys", headers=headers)
             if not r.ok:
                 return None
             keys = r.json() or []

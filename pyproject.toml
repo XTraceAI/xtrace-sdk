@@ -16,7 +16,8 @@ dependencies = [
     "tqdm>=4.67.1",
     "typing-extensions>=4.14.1",
     "python-dotenv>=1.1.1",
-    "msgpack"
+    "msgpack",
+    "certifi>=2024.2.2"
 ]
 classifiers = ["Programming Language :: Python :: 3"]
 
@@ -55,6 +56,7 @@ dev = [
     "pytest>=8.4.1",
 ]
 embedding = [
+    "torch>=1.11.0",
     "sentence-transformers>=5.0.0",
 ]
 

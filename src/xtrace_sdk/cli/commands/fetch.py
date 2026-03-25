@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from ._utils._errors import extract_server_error
 
 from xtrace_sdk.cli.state import get_pre, get_exec_context, get_integration
+from ._utils._admin_key import resolve_api_key_override
 
 from typing import Annotated
 from typing import Any, Generator
@@ -99,17 +100,27 @@ def fetch(
 )-> None:
     # mypy: Typer guarantees vector_ids is never None because argument is required
     assert vector_ids is not None
+
+    if not kb_id.strip():
+        console.print("[red]Error:[/] KB ID must not be empty.")
+        raise typer.Exit(1)
+
+    invalid = [v for v in vector_ids if v < 1]
+    if invalid:
+        console.print(f"[red]Error:[/] Vector IDs must be positive integers, got: {invalid}")
+        raise typer.Exit(1)
+
     # load environment
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy
         dotenv.load_dotenv()
         required = ["XTRACE_ORG_ID", "XTRACE_API_URL", "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE"]
-        if not api_key_override:
+        if api_key_override is None:
             required.append("XTRACE_API_KEY")
         env = _require_env(required)
 
     org_id  = env["XTRACE_ORG_ID"]
-    api_key = api_key_override or env.get("XTRACE_API_KEY")
+    api_key = resolve_api_key_override(api_key_override, env, console=console)
     api_url = env["XTRACE_API_URL"].rstrip("/")
     exec_ctx = env["XTRACE_EXECUTION_CONTEXT_PATH"]
 
@@ -122,13 +133,13 @@ def fetch(
     with _maybe_status("Loading XTrace components…", enable=not json_out):
         # Prefer preloaded deps; fall back to direct imports when missing
         pre = get_pre()
-        SimpleRetriever   = pre.SimpleRetriever
+        Retriever_        = pre.Retriever
         XTraceIntegration = pre.XTraceIntegration
         ExecutionContext  = pre.ExecutionContext
 
-        if SimpleRetriever is None:
+        if Retriever_ is None:
             from xtrace_sdk.x_vec.retrievers.retriever import Retriever as _SR
-            SimpleRetriever = _SR
+            Retriever_ = _SR
         if XTraceIntegration is None:
             from xtrace_sdk.integrations.xtrace import XTraceIntegration as _XI
             XTraceIntegration = _XI
@@ -150,7 +161,7 @@ def fetch(
             if exec_context is None:
                 exec_context = ExecutionContext.load_from_disk(env["XTRACE_PASS_PHRASE"], exec_ctx)
 
-            retriever = SimpleRetriever(exec_context, integration)
+            retriever = Retriever_(exec_context, integration)
         except Exception:
             # ensure we don't leak the aiohttp session on init errors
             if _owned:

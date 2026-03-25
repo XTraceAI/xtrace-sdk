@@ -35,8 +35,8 @@ def _require_env(names: list[str]) -> dict[str, str]:
         raise typer.Exit(2)
     return {n: os.environ[n] for n in names}
 
-def _empty_meta() -> Dict[str, Any]:
-    return {"tag1": None, "tag2": None, "tag3": None, "tag4": None, "tag5": None}
+def _default_meta() -> Dict[str, Any]:
+    return {"tag1": "cli", "tag2": None, "tag3": None, "tag4": None, "tag5": None}
 
 def _to_chunk_collection(docs: Iterable) -> list[Dict[str, Any]]:
     """Convert LocalDiskConnector.load_data_from_file() output into chunks for DataLoaderBase."""
@@ -45,7 +45,7 @@ def _to_chunk_collection(docs: Iterable) -> list[Dict[str, Any]]:
         content = getattr(doc, "page_content", doc)
         if content is None:
             continue
-        out.append({"chunk_content": str(content), "meta_data": _empty_meta()})
+        out.append({"chunk_content": str(content), "meta_data": _default_meta()})
     return out
 
 def _silence_transformers_future_warning()-> None:

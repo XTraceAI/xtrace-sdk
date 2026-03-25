@@ -1,9 +1,13 @@
 x-vec Tutorial
 ==============
 
-This page introduces the core concepts behind x-vec and walks through a complete
-end-to-end example. See :doc:`install` first if you haven't installed the SDK yet.
-If you prefer the CLI workflow, see :doc:`cli_quickstart`.
+This page walks through the Python SDK for x-vec with a complete end-to-end example.
+See :doc:`install` first if you haven't installed the SDK yet.
+
+.. note::
+
+   **Prefer the command line?** The :doc:`cli_quickstart` gets you from zero to querying
+   in four terminal commands — no Python required.
 
 
 How it works

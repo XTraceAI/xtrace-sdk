@@ -25,9 +25,9 @@ Shared commands
 
 .. code-block:: bash
 
-    xtrace init [-H {homomorphic-client}] [-f {path/to/env-file}] [--admin] [--inference] [--help]
+    xtrace init [--env-file {path/to/env-file}] [--admin] [--inference] [--help]
 
-``init`` sets up your local SDK repo by connecting your XTrace credentials, creating or loading an ``Execution Context``, and loading an ``Embedding Model``. Must be run once before any data commands. ``-H`` specifies the homomorphic client: ``paillier`` or ``paillier_lookup`` (fastest). ``-f`` sets a custom path for the generated ``.env`` file. ``--admin`` saves your admin key to ``.env`` for implicit admin access. ``--inference`` saves an inference API key.
+``init`` sets up your local SDK repo by connecting your XTrace credentials, creating or loading an ``Execution Context``, and loading an ``Embedding Model``. Must be run once before any data commands. ``--env-file`` / ``-f`` sets a custom path for the generated ``.env`` file (default: ``.env``). ``--admin`` saves your admin key to ``.env`` for implicit admin access. ``--inference`` saves an inference API key.
 
 ``version``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -50,7 +50,7 @@ Starts an interactive CLI shell with tab completion and command history. Inside 
 Knowledge base admin — ``xtrace kb``
 --------------------------------------------------
 
-KB commands require ``ADMIN_KEY`` input, entered once per session. To avoid repeated prompts, run ``init -e remote --admin`` to save the key to your ``.env``.
+KB commands require ``ADMIN_KEY`` input, entered once per session. To avoid repeated prompts, run ``init --admin`` to save the key to your ``.env``.
 
 ``create-kb``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -105,16 +105,16 @@ Loads data from a directory into a knowledge base with id ``KB_ID``, processing 
 
 .. code-block:: bash
 
-    xtrace xvec retrieve {KB_ID} {"query"} [-k {integer}] [--mode {mode}] [--inference {provider} --model {"model"}] [--json] [--bench] [--help]
+    xtrace xvec retrieve {KB_ID} {"query"} [-k {integer}] [--inference {provider} --model {"model"}] [--json] [-a {api_key}] [--help]
 
-Returns the ``k`` most similar vectors to the query (default ``k=3``). ``--mode`` selects ``simple`` or ``parallel`` retrieval. ``--inference {provider} --model {"model"}`` runs an LLM over the retrieved context (requires an inference key from ``init --inference``). ``--json`` returns raw chunk data. ``--bench`` prints timing for each retrieval step.
+Returns the ``k`` most similar vectors to the query (default ``k=3``). ``--inference {provider} --model {"model"}`` runs an LLM over the retrieved context (requires an inference key from ``init --inference``). ``--json`` returns raw chunk data. Override the API key with ``-a {api_key}``.
 
 ``query``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-    xtrace xvec query {KB_ID} "{query}" [-k {integer}] [--mode {mode}] [--inference {provider} --model {"model"}] [--json] [--bench] [--help]
+    xtrace xvec query {KB_ID} "{query}" [-k {integer}] [--inference {provider} --model {"model"}] [--json] [-a {api_key}] [--help]
 
 Alias of ``retrieve``. Same signature and behavior.
 
