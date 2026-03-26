@@ -1,6 +1,6 @@
 [project]
 name = "xtrace-ai-sdk"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Official Python SDK for XTrace — encrypted vector and memory"
 authors = [{ name = "XTrace Inc."}]
 license = { text = "Apache-2.0" }
@@ -31,8 +31,11 @@ Issues = "https://github.com/XTraceAI/xtrace-vec-sdk/issues"
 xtrace = "xtrace_sdk.cli.main:app"
 
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.25", "hatch-vcs>=0.4"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/xtrace_sdk"]
