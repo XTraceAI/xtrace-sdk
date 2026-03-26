@@ -558,7 +558,7 @@ def _warn_env_conflicts(skipped: list[str]) -> None:
     if not skipped:
         return
     console.print(
-        f"[yellow]The following keys already exist in your .env and were NOT overwritten:[/] "
+        "[yellow]The following keys already exist in your .env and were NOT overwritten:[/] "
         + ", ".join(f"[bold]{k}[/]" for k in skipped)
     )
     console.print("[dim]If these values are outdated, update or remove them from your .env manually.[/]")

@@ -1,4 +1,3 @@
-from __future__ import annotations
 """Minimal file loader with page-based chunking for the CLI.
 
 Supports plain text (.txt, .md), JSON (.json), and CSV (.csv).
@@ -9,6 +8,9 @@ Chunking strategy: approximate one page (~3000 characters) per chunk,
 with a small overlap so context isn't lost at boundaries. Splits at
 sentence boundaries where possible.
 """
+
+from __future__ import annotations
+
 import csv
 import io
 import json
@@ -143,7 +145,7 @@ def _chunk_csv(text: str, page_size: int, overlap: int) -> list[str]:
     for row in rows[1:]:
         if not any(cell.strip() for cell in row):
             continue
-        parts = [f"{h}: {v.strip()}" for h, v in zip(headers, row) if v.strip()]
+        parts = [f"{h}: {v.strip()}" for h, v in zip(headers, row, strict=False) if v.strip()]
         formatted_rows.append(". ".join(parts))
 
     if not formatted_rows:

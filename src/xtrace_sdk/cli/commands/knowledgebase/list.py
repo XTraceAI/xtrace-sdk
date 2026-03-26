@@ -63,7 +63,7 @@ def _pretty_ts(ts: str | None) -> str:
     dt = dt.astimezone(UTC)
     return dt.strftime("%b %d, %Y %H:%M UTC")
 
-@app.command("list-kbs", help="List knowledge bases available to your API key.")
+@app.command("list", help="List knowledge bases available to your API key.")
 def list_kbs(
     all: bool = typer.Option(False, "--all", help="Include KBs with no explicit permission (show 'NONE')"),
     json_out: bool = typer.Option(False, "--json", help="Output raw JSON (plus numeric permissionLabel)"),

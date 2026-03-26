@@ -15,7 +15,7 @@ Inside the interactive shell (``xtrace shell``), omit the ``xtrace`` prefix:
 .. code-block:: bash
 
     > xvec load /path/to/data/ KB_ID
-    > kb create-kb my-kb
+    > kb create my-kb
 
 Shared commands
 --------------------------------------------------
@@ -52,39 +52,39 @@ Knowledge base admin — ``xtrace kb``
 
 KB commands require ``ADMIN_KEY`` input, entered once per session. To avoid repeated prompts, run ``init --admin`` to save the key to your ``.env``.
 
-``create-kb``
+``create``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-    xtrace kb create-kb {NAME} [-d "{description}"] [-p {permission}] [--json] [-a {API_KEY}] [--help]
+    xtrace kb create {NAME} [-d "{description}"] [-p {permission}] [--json] [-a {API_KEY}] [--help]
 
 Creates a knowledge base named ``NAME``. Use ``-d`` for an optional description (wrap in quotes). Control access with ``-p {permission}``: ``read``, ``write``, ``delete``, or ``none`` (default: ``write``). The permission applies to the API key in your ``.env`` unless overridden with ``-a {API_KEY}``. ``--json`` returns the raw API response.
 
-``delete-kb``
+``delete``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-    xtrace kb delete-kb {KB_ID...} [--json] [--help]
+    xtrace kb delete {KB_ID...} [--json] [--help]
 
 Permanently deletes one or more space-separated knowledge bases. Prompts for confirmation. ``--json`` outputs raw JSON results.
 
-``list-kbs``
+``list``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-    xtrace kb list-kbs [--all] [--json] [-a {api_key}] [--help]
+    xtrace kb list [--all] [--json] [-a {api_key}] [--help]
 
 Lists all knowledge bases accessible to your current API key. By default, only KBs with explicit permissions are shown. ``--all`` also shows KBs with no permissions (displayed as ``NONE``). ``--json`` returns raw JSON including numeric ``permissionLabel`` values. Override the API key with ``-a {api_key}``.
 
-``describe-kb``
+``describe``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. code-block:: bash
 
-    xtrace kb describe-kb {KB_ID ...} [--json] [-a {api_key}] [--help]
+    xtrace kb describe {KB_ID ...} [--json] [-a {api_key}] [--help]
 
 Prints details for one or more knowledge bases. ``--json`` returns raw JSON (list when multiple IDs are given). Override the API key with ``-a {api_key}``.
 

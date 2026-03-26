@@ -64,7 +64,7 @@ The model you select during ``init`` must be the same one used for both uploadin
 querying. Changing models later requires re-uploading your data.
 
 **Knowledge base** — a namespace on XTrace where your encrypted chunks live. Create one
-with ``xtrace kb create-kb`` before loading data.
+with ``xtrace kb create`` before loading data.
 
 For a deeper look at how the encryption works, see the :doc:`quickstart` (Python SDK tutorial).
 
@@ -76,7 +76,7 @@ After running ``init``, four commands take you from an empty knowledge base to s
 .. code-block:: bash
 
     # 1. Create a knowledge base (note the KB ID in the output)
-    xtrace kb create-kb my-first-kb
+    xtrace kb create my-first-kb
 
     # 2. Load documents from a local folder
     xtrace xvec load ./my-docs/ <KB_ID>
@@ -104,13 +104,13 @@ Commands are organized by submodule. All subgroups and shared commands are acces
 **Knowledge base admin** — ``xtrace kb <command>``
 
 +-------------------+----------------------------------------------------------+
-| ``create-kb``     | Create a new knowledge base.                             |
+| ``create``        | Create a new knowledge base.                             |
 +-------------------+----------------------------------------------------------+
-| ``delete-kb``     | Delete one or more knowledge bases by ID.                |
+| ``delete``        | Delete one or more knowledge bases by ID.                |
 +-------------------+----------------------------------------------------------+
-| ``list-kbs``      | List knowledge bases available to your API key.          |
+| ``list``          | List knowledge bases available to your API key.          |
 +-------------------+----------------------------------------------------------+
-| ``describe-kb``   | Describe one or more knowledge bases by ID.              |
+| ``describe``      | Describe one or more knowledge bases by ID.              |
 +-------------------+----------------------------------------------------------+
 
 KB admin commands require ``ADMIN_KEY`` input, entered once per shell session.

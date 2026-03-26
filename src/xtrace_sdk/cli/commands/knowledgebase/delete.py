@@ -45,7 +45,7 @@ def _require_env(names: list[str]) -> dict[str, str]:
         raise typer.Exit(2)
     return {n: os.environ[n] for n in names}
 
-@app.command("delete-kb", help="Delete one or more knowledge bases by ID.")
+@app.command("delete", help="Delete one or more knowledge bases by ID.")
 def delete_kb(
     kb_ids: Annotated[
         List[str],

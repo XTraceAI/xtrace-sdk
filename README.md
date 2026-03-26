@@ -85,7 +85,7 @@ The fastest way to go from zero to search results:
 uv pip install "xtrace-ai-sdk[cli]"
 
 xtrace init                                    # set up credentials + encryption keys
-xtrace kb create-kb my-first-kb                # create a knowledge base (note the KB ID)
+xtrace kb create my-first-kb                   # create a knowledge base (note the KB ID)
 xtrace xvec load ./my-docs/ <KB_ID>            # encrypt and upload documents
 xtrace xvec retrieve <KB_ID> "your query"      # search
 ```

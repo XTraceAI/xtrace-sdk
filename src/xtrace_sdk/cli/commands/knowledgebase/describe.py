@@ -68,7 +68,7 @@ def _pretty_ts(ts: str | None) -> str:
 
 _PERM_LABEL = {1: "read", 3: "write", 7: "delete"}
 
-@app.command("describe-kb", help="Describe one or more knowledge bases by ID.")
+@app.command("describe", help="Describe one or more knowledge bases by ID.")
 def describe_kb(
         kb_ids:  Annotated[
             List[str],

@@ -2,7 +2,7 @@
 name = "xtrace-ai-sdk"
 version = "0.1.0"
 description = "Official Python SDK for XTrace — encrypted vector and memory"
-authors = [{ name = "XTrace"}]
+authors = [{ name = "XTrace Inc."}]
 license = { text = "Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.11"
