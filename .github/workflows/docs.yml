@@ -1,0 +1,68 @@
+name: "Sphinx: Render docs"
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write     # needed for AWS OIDC deploy
+      contents: read
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Resolve version from git tag or CHANGELOG
+        run: |
+          VER=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$VER" ]; then
+            VER=$(sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' CHANGELOG.md | head -1)
+          else
+            VER="${VER#v}"
+          fi
+          echo "SETUPTOOLS_SCM_PRETEND_VERSION=$VER" >> "$GITHUB_ENV"
+
+      - name: Install package + all dev dependencies
+        run: uv sync --all-groups
+
+      - name: Build Sphinx HTML
+        run: uv run sphinx-build -W -b html docs ./docs/_build/html/
+
+      - name: Upload HTML artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-docs
+          path: docs/_build/html/
+
+      # ---------- Deploy to S3 + CloudFront on main ----------
+      - name: Configure AWS Credentials (OIDC)
+        if: github.ref == 'refs/heads/main'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::490004635378:role/documentationDeployRole
+          role-session-name: updateDocumentation
+          aws-region: us-west-2
+
+      - name: Deploy to S3
+        if: github.ref == 'refs/heads/main'
+        run: aws s3 sync --delete docs/_build/html s3://${{ secrets.DOCUMENTATION_BUCKET }}
+
+      - name: Invalidate CloudFront
+        if: github.ref == 'refs/heads/main'
+        run: aws cloudfront create-invalidation --distribution-id ${{ secrets.DISTRIBUTION_ID }} --paths "/*"

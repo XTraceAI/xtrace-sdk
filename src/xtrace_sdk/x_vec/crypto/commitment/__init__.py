@@ -1,0 +1,1 @@
+"""Commitment scheme utilities. Includes a Merkle tree implementation (``merkle.py``)."""
