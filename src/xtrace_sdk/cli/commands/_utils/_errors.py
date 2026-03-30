@@ -68,6 +68,11 @@ def extract_server_error(exc: Exception) -> tuple[str | None, int | None]:
     Extract a concise message and HTTP-like status code from various
     SDK/HTTP exception shapes. Returns (message, status_code) or (None, None).
     """
+    # aiohttp ClientResponseError
+    status = getattr(exc, "status", None)
+    if isinstance(status, int) and hasattr(exc, "request_info"):
+        return getattr(exc, "message", str(exc)), status
+
     # common attributes first
     for attr in ("detail",):
         try:

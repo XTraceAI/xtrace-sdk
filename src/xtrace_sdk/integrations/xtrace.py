@@ -752,7 +752,14 @@ class XTraceIntegration:
             headers=self._admin_headers(),
             json={"name": name, "description": description},
         ) as res:
-            res.raise_for_status()
+            if not res.ok:
+                body = await res.text()
+                try:
+                    detail = json.loads(body)
+                    msg = detail.get("message") or detail.get("error", body)
+                except Exception:
+                    msg = body
+                raise RuntimeError(f"{res.status}: {msg}")
             return await res.json()
 
     async def delete_kb(self, kb_id: str) -> None:

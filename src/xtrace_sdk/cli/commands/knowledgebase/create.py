@@ -60,7 +60,7 @@ def _pretty_ts(ts: str | None) -> str:
 _PERM_NAME_TO_NUM = {"read": 1, "write": 3, "delete": 7, "none": None}
 _PERM_COLOR = {"read": "cyan", "write": "green", "delete": "magenta", "none": "red"}
 
-@app.command("create-kb", help="Create a new knowledge base.")
+@app.command("create", help="Create a new knowledge base.")
 def create_kb(
     name: str = typer.Argument(..., help="Name of the knowledge base"),
     description: str = typer.Option("", "--description", "-d", help="Optional description (wrap in quotes)"),

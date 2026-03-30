@@ -1,12 +1,16 @@
+from __future__ import annotations
+
 import inspect
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from tqdm import tqdm
 
 from xtrace_sdk.x_vec.inference.embedding import Embedding
-from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.utils.bench import bench
+
+if TYPE_CHECKING:
+    from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
 from xtrace_sdk.x_vec.utils.xtrace_types import Chunk, DocumentCollection, EncryptedChunk, EncryptedDB, EncryptedIndex
 

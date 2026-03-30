@@ -558,7 +558,7 @@ def _warn_env_conflicts(skipped: list[str]) -> None:
     if not skipped:
         return
     console.print(
-        f"[yellow]The following keys already exist in your .env and were NOT overwritten:[/] "
+        "[yellow]The following keys already exist in your .env and were NOT overwritten:[/] "
         + ", ".join(f"[bold]{k}[/]" for k in skipped)
     )
     console.print("[dim]If these values are outdated, update or remove them from your .env manually.[/]")
@@ -1041,7 +1041,7 @@ def init(
         if env_written:
             console.print(f"[dim]Wrote env[/]:         {target_env.resolve()}")
         console.print()
-        console.print("[dim]Next:[/]  xtrace kb create-kb --help   •   xtrace xvec load --help")
+        console.print("[dim]Next:[/]  xtrace kb create --help   •   xtrace xvec load --help")
     except (KeyboardInterrupt, typer.Abort) as e:
         _graceful_fail(e)
     except PermissionError as e:

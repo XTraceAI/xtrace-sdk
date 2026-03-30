@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - main
+      - staging
       - develop
   workflow_dispatch:  # lets you run it manually from the Actions tab
 

@@ -3,14 +3,17 @@ from __future__ import annotations
 import inspect
 import multiprocessing
 import os
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.inference.embedding import Embedding
-from xtrace_sdk.integrations.xtrace import XTraceIntegration
 from xtrace_sdk.x_vec.utils.bench import bench
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+
+if TYPE_CHECKING:
+    from xtrace_sdk.integrations.xtrace import XTraceIntegration
 
 
 def _decode_item(homomorphic_client: HammingClientBase, ciphertext: list[int | bytes]) -> int:

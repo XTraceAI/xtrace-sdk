@@ -54,7 +54,7 @@ each one using the execution context, and stores them in a knowledge base via
 distances over all stored ciphertexts, fetches the top-k chunk IDs, and decrypts the results.
 
 A **knowledge base** (KB) is a namespace on XTrace where your encrypted chunks live. Create
-one from the XTrace dashboard or with ``xtrace kb create-kb``.
+one from the XTrace dashboard or with ``xtrace kb create``.
 
 
 Prerequisites
@@ -65,7 +65,7 @@ Create a knowledge base from the dashboard, or via the CLI after running ``xtrac
 
 .. code-block:: bash
 
-    xtrace kb create-kb my-kb
+    xtrace kb create my-kb
 
 
 Step 1 — Create an execution context
