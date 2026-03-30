@@ -1041,7 +1041,7 @@ def init(
         if env_written:
             console.print(f"[dim]Wrote env[/]:         {target_env.resolve()}")
         console.print()
-        console.print("[dim]Next:[/]  xtrace kb create-kb --help   •   xtrace xvec load --help")
+        console.print("[dim]Next:[/]  xtrace kb create --help   •   xtrace xvec load --help")
     except (KeyboardInterrupt, typer.Abort) as e:
         _graceful_fail(e)
     except PermissionError as e:
