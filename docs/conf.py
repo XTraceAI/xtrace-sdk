@@ -7,17 +7,14 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 import os
 import sys
-import tomllib
+from importlib.metadata import version as _pkg_version
 
 sys.path.insert(0, os.path.abspath('../src'))
-
-with open(os.path.join(os.path.dirname(__file__), '..', 'pyproject.toml'), 'rb') as _f:
-    _meta = tomllib.load(_f)
 
 project = 'XTrace SDK'
 copyright = '2026, Liwen O.@XTrace Inc.'
 author = 'Liwen O.'
-release = _meta['project']['version']
+release = _pkg_version('xtrace-ai-sdk')
 version = '.'.join(release.split('.')[:2])  # major.minor shown in sidebar
 
 # -- General configuration ---------------------------------------------------
@@ -90,7 +87,7 @@ pygments_dark_style = 'monokai'
 html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
-    "announcement": "Announcement placeholder.",
+    "announcement": f"<b>v{release}</b> is out! <a href='changelog.html'>See what's new</a>.",
     "light_css_variables": {
         # Brand — purple accent throughout
         "color-brand-primary":          "#6d28d9",   # purple-700: nav highlights, hover
