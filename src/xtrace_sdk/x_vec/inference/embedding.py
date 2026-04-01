@@ -1,3 +1,4 @@
+import json
 import os
 import ssl
 from typing import Any
@@ -5,6 +6,15 @@ from typing import Any
 import aiohttp
 import certifi
 import numpy as np
+
+
+class EmbeddingError(Exception):
+    """Raised when the embedding provider returns an error."""
+
+    def __init__(self, message: str, *, status: int | None = None, chunk_len: int | None = None):
+        self.status = status
+        self.chunk_len = chunk_len
+        super().__init__(message)
 
 
 class Embedding:
@@ -69,7 +79,13 @@ class Embedding:
                 raise RuntimeError("URL not configured for ollama provider")
             async with aiohttp.ClientSession() as session, \
                     session.post(self.url, json={"model": self.model_name, "prompt": text}, ssl=ssl_ctx) as resp:
-                resp.raise_for_status()
+                if resp.status != 200:
+                    body = await resp.text()
+                    try:
+                        error_msg = json.loads(body).get("error", body)
+                    except Exception:
+                        error_msg = body
+                    raise EmbeddingError(error_msg, status=resp.status, chunk_len=len(text))
                 data = await resp.json()
                 float_embd = np.asarray(data.get("embedding", []))
 

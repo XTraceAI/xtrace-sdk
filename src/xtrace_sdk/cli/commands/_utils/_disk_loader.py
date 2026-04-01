@@ -33,6 +33,8 @@ class LocalDiskConnector:
         file_path: str,
         page_size: int = PAGE_SIZE,
         page_overlap: int = PAGE_OVERLAP,
+        *,
+        cap_json_elements: bool = False,
     ) -> list[str]:
         p = Path(file_path)
         ext = p.suffix.lower()
@@ -45,7 +47,7 @@ class LocalDiskConnector:
         if ext in (".txt", ".md"):
             return _chunk_into_pages(text, page_size, page_overlap)
         elif ext == ".json":
-            return _chunk_json(text, page_size, page_overlap)
+            return _chunk_json(text, page_size, page_overlap, cap_elements=cap_json_elements)
         elif ext == ".csv":
             return _chunk_csv(text, page_size, page_overlap)
         return [text.strip()]
@@ -74,13 +76,14 @@ def _chunk_into_pages(text: str, page_size: int, overlap: int) -> list[str]:
     for sentence in sentences:
         s_len = len(sentence)
 
-        # Single sentence bigger than a page — give it its own chunk
+        # Single sentence bigger than a page — hard-split by characters
         if s_len > page_size:
             if current:
                 pages.append(" ".join(current))
                 current = []
                 current_len = 0
-            pages.append(sentence)
+            for i in range(0, s_len, page_size):
+                pages.append(sentence[i:i + page_size])
             continue
 
         if current_len + s_len + 1 > page_size and current:
@@ -110,8 +113,12 @@ def _chunk_into_pages(text: str, page_size: int, overlap: int) -> list[str]:
     return [p for p in pages if p.strip()]
 
 
-def _chunk_json(text: str, page_size: int, overlap: int) -> list[str]:
-    """JSON arrays: each element is a chunk. Non-arrays: chunk as text."""
+def _chunk_json(text: str, page_size: int, overlap: int, *, cap_elements: bool = False) -> list[str]:
+    """JSON arrays: each element is a chunk. Non-arrays: chunk as text.
+
+    When *cap_elements* is True, array elements larger than *page_size* are
+    further split via _chunk_into_pages (triggered by --max-chunk-chars).
+    """
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
@@ -128,7 +135,11 @@ def _chunk_json(text: str, page_size: int, overlap: int) -> list[str]:
             chunk = item
         else:
             chunk = str(item)
-        if chunk.strip():
+        if not chunk.strip():
+            continue
+        if cap_elements and len(chunk) > page_size:
+            chunks.extend(_chunk_into_pages(chunk, page_size, overlap))
+        else:
             chunks.append(chunk)
     return chunks if chunks else [text.strip()]
 
