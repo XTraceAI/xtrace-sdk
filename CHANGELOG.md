@@ -1,5 +1,11 @@
 All notable changes to this project will be documented in this file.
 
+## [0.1.1] - 2026-03-31
+
+### Fixed
+
+- CLI commands failed to locate `.env` when installed from PyPI (`pip install xtrace-ai-sdk`). `dotenv.load_dotenv()` without arguments searches from the caller's file directory (site-packages), never reaching the user's working directory. All 13 call sites now use `find_dotenv(usecwd=True)` for cwd-based discovery. Editable installs (`pip install -e .`) were unaffected because the source tree sits under the user's home directory.
+
 ## [0.1.0] - 2026-03-30
 
 ### Initial release

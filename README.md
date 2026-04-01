@@ -6,7 +6,7 @@
 <p><strong> The encrypted vector database.<br>Your data never leaves your machine in plaintext. </strong></p>
 
 <p>
-  <a href="https://pypi.org/project/xtrace-ai-sdk/"><img src="https://img.shields.io/pypi/v/xtrace-ai-sdk?color=blue&label=PyPI" alt="PyPI"></a>
+  <a href="https://pypi.org/project/xtrace-ai-sdk/"><img src="https://img.shields.io/pypi/v/xtrace-ai-sdk?color=blue&label=PyPI&cacheSeconds=0" alt="PyPI"></a>
   <a href="https://github.com/XTraceAI/xtrace-sdk/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-ffffff?labelColor=d4eaf7&color=2e6cc4" alt="License"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white" alt="Python 3.11+"></a>
   <a href="https://docs.xtrace.ai"><img src="https://img.shields.io/badge/Docs-docs.xtrace.ai-blue" alt="Docs"></a>

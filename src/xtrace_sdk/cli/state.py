@@ -119,7 +119,7 @@ def load_once(console: Console | None = None) -> None:
     
     try:
         import dotenv
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
     except Exception:
         pass
 

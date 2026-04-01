@@ -678,7 +678,7 @@ def init(
             # load from disk (needed so embedding setup can read embed_len)
             with safe_status("Loading existing execution context…"):
                 import dotenv
-                dotenv.load_dotenv()
+                dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
                 required = ["XTRACE_PASS_PHRASE", "XTRACE_EXECUTION_CONTEXT_PATH"]
                 env_vars = _require_env(required)
                 passphrase = env_vars["XTRACE_PASS_PHRASE"]

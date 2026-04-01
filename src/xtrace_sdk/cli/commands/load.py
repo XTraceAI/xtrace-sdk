@@ -145,7 +145,7 @@ def load(
     # load .env
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy import
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         env = _require_env(
             "XTRACE_ORG_ID", "XTRACE_API_KEY", "XTRACE_API_URL",
             "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE", "XTRACE_EMBEDDING_MODEL_PATH"
