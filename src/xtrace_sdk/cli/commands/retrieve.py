@@ -12,6 +12,7 @@ from rich.rule import Rule
 from rich.table import Table
 from contextlib import contextmanager, nullcontext, redirect_stdout, redirect_stderr
 from ._utils._errors import extract_server_error
+from xtrace_sdk.x_vec.inference.embedding import EmbeddingError
 from typing import cast
 from typing import NoReturn
 from typing import Any, Iterator
@@ -227,6 +228,24 @@ def retrieve(
                 return await retriever.nn_search_for_ids(bits, k, kb_id=kb_id)
             ids = asyncio.run(_search())
             ids = _to_py_int_list(ids)
+        except EmbeddingError as e:
+            status = f" ({e.status})" if e.status is not None else ""
+            detail = f" (query was {e.chunk_len:,} chars)" if e.chunk_len else ""
+            if json_out:
+                _json_error(str(e), e.status)
+            else:
+                console.print(f"[red]Embedding failed{status}:[/] {e}{detail}")
+                err_lower = str(e).lower()
+                if e.chunk_len and "context length" in err_lower:
+                    console.print(
+                        "[yellow]Hint:[/] the query exceeds your embedding model's context window. "
+                        "Try shortening the query."
+                    )
+                elif "server busy" in err_lower or "pending requests" in err_lower:
+                    console.print(
+                        "[yellow]Hint:[/] embedding server is overloaded. Try again shortly."
+                    )
+            raise typer.Exit(1)
         except Exception as e:
             msg, code = extract_server_error(e)
             if json_out:
