@@ -68,8 +68,10 @@ jobs:
 
       - name: Resolve version from git tag
         run: |
-          VER=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-          echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VER#v}" >> "$GITHUB_ENV"
+          if git describe --tags --exact-match HEAD 2>/dev/null; then
+            VER=$(git describe --tags --exact-match HEAD)
+            echo "SETUPTOOLS_SCM_PRETEND_VERSION=${VER#v}" >> "$GITHUB_ENV"
+          fi
 
       - name: Build artifacts
         run: uv build
