@@ -59,7 +59,7 @@ def delete_kb(
 )-> None:
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         env = _require_env(["XTRACE_ORG_ID"])
     org_id = env["XTRACE_ORG_ID"]
     api_url = (os.getenv("XTRACE_API_URL") or "https://api.production.xtrace.ai").rstrip("/")

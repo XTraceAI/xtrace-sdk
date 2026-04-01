@@ -77,7 +77,7 @@ def create_kb(
     # load environment
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         required = ["XTRACE_ORG_ID"]
         if api_key_override is None:
             required.append("XTRACE_API_KEY")

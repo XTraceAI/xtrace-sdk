@@ -97,7 +97,7 @@ def head(
     # load env
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         required = ["XTRACE_ORG_ID", "XTRACE_API_URL", "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE"]
         if api_key_override is None:
             required.append("XTRACE_API_KEY")

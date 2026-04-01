@@ -65,7 +65,7 @@ def upsert_file(
     # env
     with safe_status("Loading environment…"):
         import dotenv 
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         env = _require_env([
             "XTRACE_ORG_ID",
             "XTRACE_API_KEY",
