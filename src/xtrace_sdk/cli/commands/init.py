@@ -535,7 +535,9 @@ def _append_env_keys(
 
     for k, v in updates.items():
         if k in active_keys and not overwrite_active:
-            skipped.append(k)
+            # only report a conflict when the existing value actually differs
+            if active_keys[k] != v:
+                skipped.append(k)
         elif k in all_keys and k not in active_keys:
             # key exists only as a comment — also skip to avoid confusion
             skipped.append(k)
@@ -678,7 +680,7 @@ def init(
             # load from disk (needed so embedding setup can read embed_len)
             with safe_status("Loading existing execution context…"):
                 import dotenv
-                dotenv.load_dotenv()
+                dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
                 required = ["XTRACE_PASS_PHRASE", "XTRACE_EXECUTION_CONTEXT_PATH"]
                 env_vars = _require_env(required)
                 passphrase = env_vars["XTRACE_PASS_PHRASE"]

@@ -7,7 +7,8 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.rule import Rule
 from contextlib import contextmanager
-from ._utils._errors import extract_server_error 
+from ._utils._errors import extract_server_error
+from xtrace_sdk.x_vec.inference.embedding import EmbeddingError
 from collections.abc import Generator
 
 from xtrace_sdk.cli.state import get_pre, get_exec_context, get_embed_model, get_integration
@@ -70,7 +71,7 @@ def upsert(
 
     with safe_status("Loading environment…"):
         import dotenv 
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         env = _require_env([
             "XTRACE_ORG_ID",
             "XTRACE_API_KEY",
@@ -153,6 +154,21 @@ def upsert(
                     vectors,
                     disable_progress=True
                 ))
+            except EmbeddingError as e:
+                status = f" ({e.status})" if e.status is not None else ""
+                detail = f" (chunk was {e.chunk_len:,} chars)" if e.chunk_len else ""
+                console.print(f"[red]Embedding failed{status}:[/] {e}{detail}")
+                err_lower = str(e).lower()
+                if e.chunk_len and "context length" in err_lower:
+                    console.print(
+                        "[yellow]Hint:[/] the text exceeds your embedding model's context window. "
+                        "Try shortening the input."
+                    )
+                elif "server busy" in err_lower or "pending requests" in err_lower:
+                    console.print(
+                        "[yellow]Hint:[/] embedding server is overloaded. Try again shortly."
+                    )
+                raise typer.Exit(1)
             except Exception as e:
                 msg, code = extract_server_error(e)
                 console.print(
@@ -169,6 +185,7 @@ def upsert(
                 raise typer.Exit(1)
 
         console.print(f"[bold green]Upserted 1 chunk[/] → KB [bold blue]{kb_id}[/].")
+        console.print("[dim]Note: the CLI uses basic chunking. For custom chunking strategies, use the Python SDK.[/]")
     finally:
         if _owned:
             try:

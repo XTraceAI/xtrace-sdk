@@ -96,9 +96,13 @@ x-vec commands — ``xtrace xvec``
 
 .. code-block:: bash
 
-    xtrace xvec load {/path/to/dir/} {KB_ID} [-f {file-types,...}] [--help]
+    xtrace xvec load {/path/to/dir/} {KB_ID} [-f {file-types,...}] [--max-chunk-chars {N}] [--max-parallel-embeddings {N}] [--help]
 
 Loads data from a directory into a knowledge base with id ``KB_ID``, processing files of type ``.txt``, ``.md``, ``.json``, and ``.csv``. To filter by file type, use ``-f`` with a comma-separated list (e.g. ``txt,json``).
+
+``--max-chunk-chars {N}`` sets a character limit per chunk. Chunks that exceed this limit (e.g. large JSON array elements) are split to fit. Useful when your embedding model has a small context window.
+
+``--max-parallel-embeddings {N}`` limits the number of concurrent embedding requests. Useful when your embedding provider has concurrency limits (e.g. a local Ollama instance).
 
 ``retrieve``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -150,9 +154,11 @@ Inserts a single text chunk into a knowledge base. Wrap ``text`` in quotes if it
 
 .. code-block:: bash
 
-    xtrace xvec upsert-file {/path/to/file} {KB_ID} [--help]
+    xtrace xvec upsert-file {/path/to/file} {KB_ID} [--max-chunk-chars {N}] [--max-parallel-embeddings {N}] [--help]
 
 Inserts and chunks the contents of a single file into a knowledge base. Supported types: ``.txt``, ``.md``, ``.json``, ``.csv``. For multiple files, use ``load``.
+
+``--max-chunk-chars {N}`` and ``--max-parallel-embeddings {N}`` behave the same as in ``load`` (see above).
 
 x-mem commands — ``xtrace xmem``
 --------------------------------------------------

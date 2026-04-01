@@ -11,6 +11,7 @@ from rich.rule import Rule
 from contextlib import contextmanager
 import warnings
 from ._utils._errors import extract_server_error
+from xtrace_sdk.x_vec.inference.embedding import EmbeddingError
 
 from xtrace_sdk.cli.state import get_pre, get_exec_context, get_embed_model, get_integration
 
@@ -99,7 +100,12 @@ def _iter_matching_files(root: Path, types: Set[str] | None) -> Iterable[Path]:
             if ext in types:
                 yield p
 
-def _collect_from_folder(folder: str, types: Set[str] | None) -> Tuple[List[Dict[str, Any]], int]:
+def _collect_from_folder(
+    folder: str,
+    types: Set[str] | None,
+    *,
+    max_chunk_chars: int | None = None,
+) -> Tuple[List[Dict[str, Any]], int]:
     """
     Walk folder, load only matching files via LocalDiskConnector.load_data_from_file,
     convert to chunks with required meta_data. Returns (chunks, matched_file_count).
@@ -110,12 +116,17 @@ def _collect_from_folder(folder: str, types: Set[str] | None) -> Tuple[List[Dict
     if not root.is_dir():
         raise typer.BadParameter(f"Folder not found or not a directory: {folder}")
 
+    load_kwargs: Dict[str, Any] = {}
+    if max_chunk_chars is not None:
+        load_kwargs["page_size"] = max_chunk_chars
+        load_kwargs["cap_json_elements"] = True
+
     collection: List[Dict[str, Any]] = []
     matched_files = 0
 
     for path in _iter_matching_files(root, types):
         try:
-            docs = LocalDiskConnector.load_data_from_file(str(path))
+            docs = LocalDiskConnector.load_data_from_file(str(path), **load_kwargs)
         except ValueError:
             # unsupported type or unreadable file — skip silently since we filtered by ext
             continue
@@ -141,11 +152,22 @@ def load(
              "Types are matched to file extensions (no dot), case-insensitive."
     ),
     json_out: bool = typer.Option(False, "--json", help="Output JSON summary"),
+    max_chunk_chars: int | None = typer.Option(
+        None, "--max-chunk-chars",
+        help="Maximum characters per chunk. Oversized chunks (e.g. large JSON objects) "
+             "are split to fit within this limit. Useful when your embedding model has a "
+             "small context window.",
+    ),
+    max_parallel_embeddings: int | None = typer.Option(
+        None, "--max-parallel-embeddings",
+        help="Maximum number of concurrent embedding requests. "
+             "Useful when your embedding provider has concurrency limits (e.g. local Ollama).",
+    ),
 ) -> None:
     # load .env
     with _maybe_status("Loading environment…", enable=not json_out):
         import dotenv  # lazy import
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         env = _require_env(
             "XTRACE_ORG_ID", "XTRACE_API_KEY", "XTRACE_API_URL",
             "XTRACE_EXECUTION_CONTEXT_PATH", "XTRACE_PASS_PHRASE", "XTRACE_EMBEDDING_MODEL_PATH"
@@ -207,7 +229,7 @@ def load(
     try:
         # scan and chunk local files (filtered)
         with _maybe_status("Scanning files and preparing chunks…", enable=not json_out):
-            collection, matched_files = _collect_from_folder(folder_path, types)
+            collection, matched_files = _collect_from_folder(folder_path, types, max_chunk_chars=max_chunk_chars)
 
         if matched_files == 0:
             if json_out:
@@ -215,7 +237,10 @@ def load(
             elif types:
                 console.print(f"[yellow]No files matched the provided types ({', '.join(sorted(types))}).[/]")
             else:
-                console.print("[yellow]No readable files found.[/]")
+                from xtrace_sdk.cli.commands._utils._disk_loader import _SUPPORTED
+                supported = ", ".join(sorted(_SUPPORTED))
+                console.print(f"[yellow]No readable files found. Supported types: {supported}[/]")
+            console.print("[dim]Hint: for advanced ingestion workflows, use the Python SDK directly.[/]")
             raise typer.Exit(1)
 
         n_chunks = len(collection)
@@ -235,21 +260,51 @@ def load(
             embedding_model = obj.get("embedding") if isinstance(obj, dict) else obj
 
         async def _embed_all() -> list[Any]:
+            if max_parallel_embeddings is not None:
+                sem = asyncio.Semaphore(max_parallel_embeddings)
+                async def _limited(text: str) -> Any:
+                    async with sem:
+                        return await embedding_model.bin_embed(text)
+                return list(await asyncio.gather(*[
+                    _limited(c["chunk_content"]) for c in collection
+                ]))
             return list(await asyncio.gather(*[
                 embedding_model.bin_embed(c["chunk_content"]) for c in collection
             ]))
-        try:
-            vectors = asyncio.run(_embed_all())
-        except Exception as e:
-            msg, code = extract_server_error(e)
-            if json_out:
-                _json_error(msg or str(e), code, kb_id=kb_id)
-            elif msg:
-                status = f" ({code})" if code is not None else ""
-                console.print(f"[red]Embedding failed{status}:[/] {msg}")
-            else:
-                console.print(f"[red]Embedding failed:[/] {e}")
-            raise typer.Exit(1)
+        with _maybe_status("Embedding chunks…", enable=not json_out):
+            try:
+                vectors = asyncio.run(_embed_all())
+            except EmbeddingError as e:
+                status = f" ({e.status})" if e.status is not None else ""
+                detail = f" (chunk was {e.chunk_len:,} chars)" if e.chunk_len else ""
+                if json_out:
+                    _json_error(str(e), e.status, kb_id=kb_id)
+                else:
+                    console.print(f"[red]Embedding failed{status}:[/] {e}{detail}")
+                    err_lower = str(e).lower()
+                    if e.chunk_len and "context length" in err_lower:
+                        console.print(
+                            "[yellow]Hint:[/] some chunks exceed your embedding model's context window. "
+                            "Re-run with [bold]--max-chunk-chars N[/] to split large chunks "
+                            "(e.g. [dim]--max-chunk-chars 3000[/])."
+                        )
+                    elif "server busy" in err_lower or "pending requests" in err_lower:
+                        console.print(
+                            "[yellow]Hint:[/] too many concurrent embedding requests. "
+                            "Re-run with [bold]--max-parallel-embeddings N[/] to limit concurrency "
+                            "(e.g. [dim]--max-parallel-embeddings 5[/])."
+                        )
+                raise typer.Exit(1)
+            except Exception as e:
+                msg, code = extract_server_error(e)
+                if json_out:
+                    _json_error(msg or str(e), code, kb_id=kb_id)
+                elif msg:
+                    status = f" ({code})" if code is not None else ""
+                    console.print(f"[red]Embedding failed{status}:[/] {msg}")
+                else:
+                    console.print(f"[red]Embedding failed:[/] {e}")
+                raise typer.Exit(1)
 
         index, db = asyncio.run(dl.load_data_from_memory(collection, vectors))  # type: ignore[arg-type]
         if not json_out:
@@ -279,6 +334,7 @@ def load(
             }, ensure_ascii=False))
         else:
             console.print(f"[bold green]Loaded {n_chunks} chunk(s)[/] → KB [bold blue]{kb_id}[/]")
+            console.print("[dim]Note: the CLI uses basic chunking. For custom chunking strategies, use the Python SDK.[/]")
     finally:
         if _owned:
             try:

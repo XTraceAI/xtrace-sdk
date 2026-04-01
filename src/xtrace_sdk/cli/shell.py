@@ -168,7 +168,7 @@ def run_shell() -> int:
 
         # Create one persistent XTraceIntegration for the whole shell session
         import dotenv
-        dotenv.load_dotenv()
+        dotenv.load_dotenv(dotenv.find_dotenv(usecwd=True))
         _org_id  = os.getenv("XTRACE_ORG_ID")
         _api_key = os.getenv("XTRACE_API_KEY")
         _api_url = (os.getenv("XTRACE_API_URL") or "https://api.production.xtrace.ai").rstrip("/")
