@@ -535,7 +535,9 @@ def _append_env_keys(
 
     for k, v in updates.items():
         if k in active_keys and not overwrite_active:
-            skipped.append(k)
+            # only report a conflict when the existing value actually differs
+            if active_keys[k] != v:
+                skipped.append(k)
         elif k in all_keys and k not in active_keys:
             # key exists only as a comment — also skip to avoid confusion
             skipped.append(k)
