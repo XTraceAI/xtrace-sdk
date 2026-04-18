@@ -19,7 +19,11 @@ def load_gpu_extension(module_name: str, relative_dir: str) -> ModuleType:
         candidates.extend(sorted(search_dir.glob(f"{module_name}*{pattern[1:]}")))
 
     if not candidates:
-        raise ImportError(f"Unable to locate GPU extension {module_name!r} under {search_dir}.")
+        raise ImportError(
+            f"Unable to locate GPU extension {module_name!r} under {search_dir}. "
+            "To build it, run `./build_gpu_binaries.sh` from the repo root "
+            "(requires Docker). Runtime requires NVIDIA driver >= 550 (CUDA 12.x)."
+        )
 
     module_path = candidates[0]
     spec = importlib.util.spec_from_file_location(module_name, module_path)

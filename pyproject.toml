@@ -24,8 +24,8 @@ classifiers = ["Programming Language :: Python :: 3"]
 [project.urls]
 Homepage = "https://xtrace.ai"
 Documentation = "https://docs.xtrace.ai"
-Repository = "https://github.com/XTraceAI/xtrace-vec-sdk"
-Issues = "https://github.com/XTraceAI/xtrace-vec-sdk/issues"
+Repository = "https://github.com/XTraceAI/xtrace-sdk"
+Issues = "https://github.com/XTraceAI/xtrace-sdk/issues"
 
 [project.scripts]
 xtrace = "xtrace_sdk.cli.main:app"

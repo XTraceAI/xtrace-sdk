@@ -9,7 +9,8 @@ from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import PaillierLookup
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.utils.xtrace_types import PaillierEncryptedNumber, PaillierLookupKeyPair
 
-DEVICE = os.getenv("DEVICE", "cpu")
+def _resolve_device() -> str:
+    return os.getenv("DEVICE", "cpu")
 
 
 
@@ -21,15 +22,11 @@ class PaillierLookupGPU:
     """
 
     def __init__(self,embed_len:int=512, key_len:int=1024, alpha_len:int=50, skip_key_gen:bool=False) -> None:
-        try:
-            #lazy import here to avoid import error when GPU backend is not available
-            from .paillier_GPU_lookup_client import PaillierGPULookupClient
-        except Exception as e:
-            raise ImportError(
-                "GPU backend unavailable. Expected Paillier GPU .so under src/crypto/ "
-                "Please refer to the documentation for compilation instructions."
-            ) from e
-        self.gpu_client = PaillierGPULookupClient(embed_len=embed_len, key_len=key_len, alpha_len=alpha_len ,skip_key_gen=skip_key_gen)
+        from xtrace_sdk.x_vec.crypto._gpu_loader import load_gpu_extension
+        module = load_gpu_extension("paillier_GPU_lookup_client", "paillier-GPU-lookup-client")
+        self.gpu_client = module.PaillierGPULookupClient(
+            embed_len=embed_len, key_len=key_len, alpha_len=alpha_len, skip_key_gen=skip_key_gen,
+        )
 
     def encrypt(self, embds: list[list[int]]) -> list[PaillierEncryptedNumber]:
         """Encrypt a batch of binary embedding vectors on GPU.
@@ -39,12 +36,7 @@ class PaillierLookupGPU:
         :return: List of encrypted vectors.
         :rtype: list[PaillierEncryptedNumber]
         """
-        # Fast path using raw bytes integration. Eliminates heavy python string operations.
-        bytes_batch = self.gpu_client.encrypt_bytes(embds)
-        res = []
-        for bytes_list in bytes_batch:
-            res.append([int.from_bytes(b, byteorder='little') for b in bytes_list])
-        return res
+        return [[int(cipher) for cipher in row] for row in self.gpu_client.encrypt(embds)]
 
     def decode_hamming_client(self, cipher: list[list[int | bytes]]) -> list[int]:
         """Decrypt a batch of encrypted Hamming distances on GPU.
@@ -54,24 +46,14 @@ class PaillierLookupGPU:
         :return: List of plain-text Hamming distances.
         :rtype: list[int]
         """
-        chunk_byte_len = (self.gpu_client.key_len * 4) // 8
-        
-        bytes_batch = []
-        for c in cipher:
-            # c is a list of chunks (either int or bytes)
-            record_bytes = []
-            for h in c:
-                if isinstance(h, bytes):
-                    # Ensure bytes are exactly chunk_byte_len.
-                    # Server might send variable length if it's using compact integer representation.
-                    if len(h) != chunk_byte_len:
-                        h = int.from_bytes(h, byteorder='little').to_bytes(chunk_byte_len, byteorder='little')
-                    record_bytes.append(h)
-                else:
-                    record_bytes.append(int(h).to_bytes(chunk_byte_len, byteorder='little'))
-            bytes_batch.append(record_bytes)
-            
-        return self.gpu_client.decode_hamming_client_bytes(bytes_batch)
+        normalized = [
+            [
+                int.from_bytes(h, byteorder='little') if isinstance(h, bytes) else int(h)
+                for h in record
+            ]
+            for record in cipher
+        ]
+        return [int(v) for v in self.gpu_client.decode_hamming_client(normalized)]
     
     def stringify_pk(self) -> str:
         """Return a JSON string representation of the public key."""
@@ -329,7 +311,7 @@ class PaillierLookupClient(HammingClientBase):
         else:
             self.chunk_num = 1
         
-        self.device = DEVICE
+        self.device = _resolve_device()
         self.client: PaillierLookupGPU | PaillierLookupCPU
         if self.device == "gpu":
             if not self.has_gpu():
@@ -487,7 +469,7 @@ class PaillierLookupClient(HammingClientBase):
 
     def __setstate__(self, state: dict) -> None:
         """Restore from pickle"""
-        self.device = DEVICE
+        self.device = _resolve_device()
         self.embed_len = state["embed_len"]
         self.key_len = state["key_len"]
         self.alpha_len = state["alpha_len"]
