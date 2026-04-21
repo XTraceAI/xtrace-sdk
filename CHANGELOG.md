@@ -1,5 +1,19 @@
 All notable changes to this project will be documented in this file.
 
+## [0.2.0] - 2026-04-18
+
+### Added
+
+- **CUDA backend for Paillier and Paillier-Lookup homomorphic encryption.** The `.cu` sources are now in-tree under `src/xtrace_sdk/x_vec/crypto/paillier-GPU-{,lookup-}client/`, and the new `build_gpu_binaries.sh` script compiles both pybind11 extensions inside a pinned `nvidia/cuda:12.4.0-devel-ubuntu22.04` Docker container. No local CUDA toolkit is required on the build host — only Docker and `nvcc` (provided by the image). Runtime requires NVIDIA driver ≥ 550. Opt-in via `DEVICE=gpu`; CPU remains the default.
+- `PaillierGPUClient` and `PaillierLookupGPUClient` — standalone GPU-backed Hamming clients for `ExecutionContext`. Type dispatch in `ExecutionContext.create` now accepts these as first-class alternatives to their CPU counterparts.
+- Documented `DEVICE` environment variable in the configuration reference.
+- "GPU acceleration" section in the installation docs covering build script usage, runtime requirements, and per-build knobs (`PYTHON_VERSION`, `SMS`, `KEY_BITS`, `ALPHA_LEN`, `CUDA_IMAGE`).
+
+### Changed
+
+- `DEVICE` is now resolved at client instantiation time rather than at module import time. Previously, setting `os.environ["DEVICE"]` after importing a client (common in notebooks) had no effect; the module-level constant was already frozen to `cpu`. The env var is now read fresh inside `PaillierClient.__init__`, `PaillierLookupClient.__init__`, and `PaillierLookupClient.__setstate__`, so CPU and GPU clients can be instantiated in the same process and ordering of imports no longer matters.
+- Error messages raised when the GPU extension cannot be loaded now point users at `./build_gpu_binaries.sh` and document runtime driver requirements, replacing the previous stale reference to `src/crypto/` and non-existent documentation.
+
 ## [0.1.1] - 2026-03-31
 
 ### Fixed
