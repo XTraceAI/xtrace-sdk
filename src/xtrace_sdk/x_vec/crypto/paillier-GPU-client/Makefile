@@ -9,8 +9,8 @@
 #
 # Directory layout (as you described):
 #   ./GPU_paillier_client/paillier_GPU_client.cu
-#   ./include/pybind11/...
-#   ./include/cgbn/...
+#   ./GPU_include/pybind11/...
+#   ./GPU_include/cgbn/...
 
 # -------- Parameters you can tweak on the command line --------
 KEY_BITS ?= 1024
@@ -28,7 +28,7 @@ EXT      := $(shell python3 -c "import sysconfig;print(sysconfig.get_config_var(
 TARGET   := paillier_GPU_client$(EXT)
 
 SRC      := paillier_GPU_client.cu
-INCDIR   := ../include
+INCDIR   := ../GPU_include
 CXXSTD   := -std=c++17
 
 # Construct gencode flags for each SM

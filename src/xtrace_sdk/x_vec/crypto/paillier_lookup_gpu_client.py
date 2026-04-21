@@ -72,7 +72,11 @@ class PaillierLookupGPUClient(HammingClientBase):
         self._gpu_client.load_stringified_keys(pk, sk)
 
     def load_config(self, config: dict, precomputed_tables: dict | None = None) -> None:
-        self._gpu_client.load_config({k: v for k, v in config.items() if k != "device"})
+        sanitized_config = {k: v for k, v in config.items() if k != "device"}
+        if precomputed_tables is None:
+            self._gpu_client.load_config(sanitized_config)
+        else:
+            self._gpu_client.load_config(sanitized_config, precomputed_tables)
         self.embed_len = config["embed_len"]
         self.key_len = config["key_len"]
         self.alpha_len = config.get("alpha_len", self.alpha_len)

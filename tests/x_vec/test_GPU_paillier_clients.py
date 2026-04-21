@@ -3,6 +3,7 @@ import json
 import pytest
 
 from xtrace_sdk.x_vec.crypto.paillier_gpu_client import PaillierGPUClient
+from xtrace_sdk.x_vec.crypto.paillier_lookup_client import PaillierLookupCPU
 from xtrace_sdk.x_vec.crypto.paillier_lookup_gpu_client import PaillierLookupGPUClient
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
 
@@ -128,3 +129,44 @@ def test_gpu_execution_context_serialization_roundtrip(
         restored.homomorphic.encrypt_vec_one(_VECTORS[2]),
     )
     assert restored.homomorphic.decode_hamming_client_one(encoded) == _hamming(_VECTORS[0], _VECTORS[2])
+
+
+def test_paillier_lookup_gpu_accepts_precomputed_tables() -> None:
+    if not PaillierLookupGPUClient.is_available():
+        pytest.skip("paillier_lookup_gpu backend is unavailable on this machine")
+
+    ctx = ExecutionContext.create(
+        passphrase=_PASSPHRASE,
+        homomorphic_client_type="paillier_lookup_gpu",
+        embedding_length=_EMBED_LEN,
+        key_len=_KEY_LEN,
+    )
+    client = ctx.homomorphic
+    config_dict = json.loads(client.stringify_config())
+    pk = client.stringify_pk()
+    sk = client.stringify_sk()
+
+    cpu_clone = PaillierLookupCPU(
+        embed_len=_EMBED_LEN,
+        key_len=_KEY_LEN,
+        alpha_len=config_dict["alpha_len"],
+        skip_key_gen=True,
+    )
+    cpu_clone.load_stringified_keys(pk, sk)
+    cpu_clone.load_config(config_dict)
+    precomputed_tables = cpu_clone.dump_tables()
+
+    gpu_clone = PaillierLookupGPUClient(
+        embed_len=_EMBED_LEN,
+        key_len=_KEY_LEN,
+        alpha_len=config_dict["alpha_len"],
+        skip_key_gen=True,
+    )
+    gpu_clone.load_stringified_keys(pk, sk)
+    gpu_clone.load_config(config_dict, precomputed_tables=precomputed_tables)
+
+    encoded = gpu_clone.encode_hamming_server(
+        gpu_clone.encrypt_vec_one(_VECTORS[0]),
+        gpu_clone.encrypt_vec_one(_VECTORS[1]),
+    )
+    assert gpu_clone.decode_hamming_client_one(encoded) == _hamming(_VECTORS[0], _VECTORS[1])

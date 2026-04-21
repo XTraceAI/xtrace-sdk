@@ -1264,12 +1264,12 @@ __global__ void decode_hamming_kernel(error_report_t *report,
 
   // Decrypt: t = c^a mod n^2
   typename env_t::cgbn_t t, x, q, rrem, m;
-typename env_t::cgbn_wide_t wide;
+  typename env_t::cgbn_wide_t wide;
 
-pow_mod_small_exp(env, t, c, A, n2, exp_bits);       // t = c^a mod n^2
-pow_mod_small_exp(env, t, c, A, n2, exp_bits);       // t = c^a mod n^2
-// x = t - 1  (t is in [1, n^2-1], so this is >= 0)
-cgbn_sub_ui32(env, x, t, 1);
+  pow_mod_small_exp(env, t, c, A, n2, exp_bits);  // t = c^a mod n^2
+  // pow_mod_small_exp(env, t, c, A, n2, exp_bits);  // duplicate call kept commented for reversibility
+  // x = t - 1  (t is in [1, n^2-1], so this is >= 0)
+  cgbn_sub_ui32(env, x, t, 1);
 
 // Divide exactly: x = q*n + rrem  (rrem must be 0)
 cgbn_div(env, q, x, n);
@@ -1787,7 +1787,7 @@ public:
     have_keys_ = true;
   }
 
-  void load_config(const py::dict &config) {
+  void load_config(const py::dict &config, const py::object &tables = py::none()) {
     if (!have_keys_) {
       throw std::runtime_error("load_config: keys must be loaded first");
     }
@@ -1805,12 +1805,46 @@ public:
 
     message_chunks_ = py::cast<int>(config["message_chunks"]);
 
+    free_device_tables_();
+    a_bits_ = static_cast<int>(mpz_sizeinbase(keys_.sk.a.v, 2));
+
+    if (!tables.is_none()) {
+      if (!py::isinstance<py::dict>(tables)) {
+        throw std::runtime_error("load_config: tables must be a dict");
+      }
+      py::dict tables_dict = py::reinterpret_borrow<py::dict>(tables);
+
+      std::vector<mem_t> g_table;
+      std::vector<mem_t> noise_table;
+      if (tables_dict.contains("g_table")) {
+        g_table = g_table_from_py(tables_dict["g_table"], message_chunks_);
+      }
+      if (tables_dict.contains("noise_table")) {
+        noise_table = noise_table_from_py(tables_dict["noise_table"]);
+      }
+
+      const int expected_g_table_size = message_chunks_ * PAILLIER_MSG_TABLE_SIZE;
+      if (!g_table.empty() && static_cast<int>(g_table.size()) != expected_g_table_size) {
+        throw std::runtime_error("load_config: g_table size mismatch");
+      }
+      if (!noise_table.empty() && static_cast<int>(noise_table.size()) != PAILLIER_NOISE_TABLE_SIZE) {
+        throw std::runtime_error("load_config: noise_table size mismatch");
+      }
+
+      if (!g_table.empty()) {
+        g_table_ = std::make_shared<std::vector<mem_t>>(std::move(g_table));
+      } else {
+        g_table_.reset();
+      }
+      noise_table_ = std::move(noise_table);
+      tables_ready_ = g_table_ != nullptr && !noise_table_.empty();
+      return;
+    }
+
     // Lazy init: defer expensive table computation to first use
     g_table_.reset();
     noise_table_.clear();
     tables_ready_ = false;
-    free_device_tables_();
-    a_bits_      = static_cast<int>(mpz_sizeinbase(keys_.sk.a.v, 2));
   }
 
   // Batched encrypt: embeddings is [batch][embed_len] of 0/1, returns [batch][chunk_num] ciphers
@@ -2645,7 +2679,9 @@ PYBIND11_MODULE(paillier_GPU_lookup_client, m) {
       .def("stringify_sk", &PaillierGPULookupClient::stringify_sk)
       .def("stringify_config", &PaillierGPULookupClient::stringify_config)
       .def("load_stringified_keys", &PaillierGPULookupClient::load_stringified_keys)
-      .def("load_config", &PaillierGPULookupClient::load_config)
+      .def("load_config", &PaillierGPULookupClient::load_config,
+           py::arg("config"),
+           py::arg("tables") = py::none())
       .def_property_readonly("embed_len", &PaillierGPULookupClient::embed_len)
       .def_property_readonly("key_len", &PaillierGPULookupClient::key_len)
       .def_property_readonly("chunk_len", &PaillierGPULookupClient::chunk_len)

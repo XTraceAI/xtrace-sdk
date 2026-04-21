@@ -1,6 +1,6 @@
 import importlib.util
 import sys
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from types import ModuleType
 
@@ -9,7 +9,7 @@ _CRYPTO_DIR = Path(__file__).resolve().parent
 _EXTENSION_GLOBS = ("*.so", "*.pyd", "*.dylib")
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_gpu_extension(module_name: str, relative_dir: str) -> ModuleType:
     """Load a pybind extension from one of the in-tree GPU build directories."""
     search_dir = _CRYPTO_DIR / relative_dir
