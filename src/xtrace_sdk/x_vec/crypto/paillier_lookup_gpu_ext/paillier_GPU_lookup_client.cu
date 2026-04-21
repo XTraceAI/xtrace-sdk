@@ -1847,6 +1847,40 @@ public:
     tables_ready_ = false;
   }
 
+  py::dict dump_tables() const {
+    ensure_tables_ready_();
+
+    py::dict out;
+    py::dict g_table_dict;
+    if (g_table_ != nullptr) {
+      for (int chunk_idx = 0; chunk_idx < message_chunks_; ++chunk_idx) {
+        py::list row;
+        const size_t base = static_cast<size_t>(chunk_idx) * static_cast<size_t>(PAILLIER_MSG_TABLE_SIZE);
+        for (int j = 0; j < PAILLIER_MSG_TABLE_SIZE; ++j) {
+          row.append(py_mpz_from_big(mem_to_bigint((*g_table_)[base + static_cast<size_t>(j)])));
+        }
+        g_table_dict[py::int_(chunk_idx)] = row;
+      }
+    }
+
+    py::list noise_list;
+    for (const auto &entry : noise_table_) {
+      noise_list.append(py_mpz_from_big(mem_to_bigint(entry)));
+    }
+
+    out["g_table"] = g_table_dict;
+    out["noise_table"] = noise_list;
+    return out;
+  }
+
+  py::dict dump_tables_bytes() const {
+    return dump_tables();
+  }
+
+  void load_config_bytes(const py::dict &config, const py::object &tables = py::none()) {
+    load_config(config, tables);
+  }
+
   // Batched encrypt: embeddings is [batch][embed_len] of 0/1, returns [batch][chunk_num] ciphers
   py::list
   encrypt(const std::vector<std::vector<int>> &embeddings, std::uint64_t seed = 0) const {
@@ -2680,6 +2714,11 @@ PYBIND11_MODULE(paillier_GPU_lookup_client, m) {
       .def("stringify_config", &PaillierGPULookupClient::stringify_config)
       .def("load_stringified_keys", &PaillierGPULookupClient::load_stringified_keys)
       .def("load_config", &PaillierGPULookupClient::load_config,
+           py::arg("config"),
+           py::arg("tables") = py::none())
+      .def("dump_tables", &PaillierGPULookupClient::dump_tables)
+      .def("dump_tables_bytes", &PaillierGPULookupClient::dump_tables_bytes)
+      .def("load_config_bytes", &PaillierGPULookupClient::load_config_bytes,
            py::arg("config"),
            py::arg("tables") = py::none())
       .def_property_readonly("embed_len", &PaillierGPULookupClient::embed_len)

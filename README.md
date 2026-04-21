@@ -82,7 +82,7 @@ The Paillier homomorphic encryption path has an optional CUDA backend that is si
 
 This produces two `.so` files in place under `src/xtrace_sdk/x_vec/crypto/paillier-GPU-{,lookup-}client/`. The runtime loader picks them up automatically once they exist.
 
-Enable the GPU path at runtime by setting `DEVICE=gpu` **before** importing any Paillier client:
+Enable the GPU path at runtime by setting `DEVICE=gpu` before instantiating a Paillier client:
 
 ```python
 import os

@@ -1,16 +1,16 @@
 import json
+import pickle
 
 import pytest
 
-from xtrace_sdk.x_vec.crypto.paillier_gpu_client import PaillierGPUClient
-from xtrace_sdk.x_vec.crypto.paillier_lookup_client import PaillierLookupCPU
-from xtrace_sdk.x_vec.crypto.paillier_lookup_gpu_client import PaillierLookupGPUClient
+from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
+from xtrace_sdk.x_vec.crypto.paillier_lookup_client import PaillierLookupClient
 from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
 
 
 _PASSPHRASE = "test-gpu-exec-ctx-passphrase"
 _EMBED_LEN = 8
-_KEY_LEN = 64
+_KEY_LEN = 1024
 _VECTORS = [
     [0, 1, 0, 1, 1, 0, 1, 0],
     [1, 1, 0, 0, 1, 0, 0, 1],
@@ -22,25 +22,21 @@ def _hamming(lhs: list[int], rhs: list[int]) -> int:
     return sum(int(a != b) for a, b in zip(lhs, rhs, strict=True))
 
 
-def _clone_client(client_type: str) -> PaillierGPUClient | PaillierLookupGPUClient:
-    if client_type == "paillier_gpu":
-        return PaillierGPUClient(embed_len=_EMBED_LEN, key_len=_KEY_LEN, skip_key_gen=True)
-    return PaillierLookupGPUClient(embed_len=_EMBED_LEN, key_len=_KEY_LEN, skip_key_gen=True)
-
-
 @pytest.mark.parametrize(
-    ("client_type", "client_cls"),
+    ("client_cls", "client_type"),
     [
-        pytest.param("paillier_gpu", PaillierGPUClient, id="paillier_gpu"),
-        pytest.param("paillier_lookup_gpu", PaillierLookupGPUClient, id="paillier_lookup_gpu"),
+        pytest.param(PaillierClient, "paillier", id="paillier"),
+        pytest.param(PaillierLookupClient, "paillier_lookup", id="paillier_lookup"),
     ],
 )
 def test_gpu_clients_expose_execution_context_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+    client_cls: type[PaillierClient] | type[PaillierLookupClient],
     client_type: str,
-    client_cls: type[PaillierGPUClient] | type[PaillierLookupGPUClient],
 ) -> None:
-    if not client_cls.is_available():
-        pytest.skip(f"{client_type} backend is unavailable on this machine")
+    monkeypatch.setenv("DEVICE", "gpu")
+    if not client_cls.has_gpu():
+        pytest.skip(f"{client_type} GPU backend is unavailable on this machine")
 
     ctx = ExecutionContext.create(
         passphrase=_PASSPHRASE,
@@ -82,9 +78,16 @@ def test_gpu_clients_expose_execution_context_protocol(
         _hamming(_VECTORS[1], _VECTORS[2]),
     ]
 
-    clone = _clone_client(client_type)
+    clone = client_cls(
+        embed_len=_EMBED_LEN,
+        key_len=_KEY_LEN,
+        skip_key_gen=True,
+    )
     clone.load_stringified_keys(pk, sk)
-    clone.load_config(config_dict)
+    if isinstance(clone, PaillierLookupClient):
+        clone.load_config(config_dict, precomputed_tables=ctx.dump_tables())
+    else:
+        clone.load_config(config_dict)
 
     clone_cipher = clone.encrypt_vec_one(_VECTORS[0])
     clone_encoded = clone.encode_hamming_server(clone_cipher, clone.encrypt_vec_one(_VECTORS[1]))
@@ -95,78 +98,39 @@ def test_gpu_clients_expose_execution_context_protocol(
     assert clone.decode_hamming_client_one(clone_encoded) == _hamming(_VECTORS[0], _VECTORS[1])
 
 
-@pytest.mark.parametrize(
-    ("client_type", "client_cls"),
-    [
-        pytest.param("paillier_gpu", PaillierGPUClient, id="paillier_gpu"),
-        pytest.param("paillier_lookup_gpu", PaillierLookupGPUClient, id="paillier_lookup_gpu"),
-    ],
-)
-def test_gpu_execution_context_serialization_roundtrip(
-    client_type: str,
-    client_cls: type[PaillierGPUClient] | type[PaillierLookupGPUClient],
-) -> None:
-    if not client_cls.is_available():
-        pytest.skip(f"{client_type} backend is unavailable on this machine")
-
-    ctx = ExecutionContext.create(
+def test_lookup_exec_context_hash_matches_across_cpu_and_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVICE", "cpu")
+    cpu_ctx = ExecutionContext.create(
         passphrase=_PASSPHRASE,
-        homomorphic_client_type=client_type,
+        homomorphic_client_type="paillier_lookup",
         embedding_length=_EMBED_LEN,
         key_len=_KEY_LEN,
     )
-    restored = ExecutionContext._from_serialized_exec_context(
-        json.loads(ctx.serialize_exec_context()),
+
+    monkeypatch.setenv("DEVICE", "gpu")
+    if not PaillierLookupClient.has_gpu():
+        pytest.skip("paillier_lookup GPU backend is unavailable on this machine")
+
+    restored_gpu = ExecutionContext._from_serialized_exec_context(
+        json.loads(cpu_ctx.serialize_exec_context()),
         passphrase=_PASSPHRASE,
     )
 
-    assert restored.hash() == ctx.hash()
-    assert restored.device == "gpu"
-    assert type(restored.homomorphic).__name__ == type(ctx.homomorphic).__name__
+    assert cpu_ctx.hash() == restored_gpu.hash()
+    assert restored_gpu.device == "gpu"
+    assert type(restored_gpu.homomorphic).__name__ == "PaillierLookupClient"
 
-    encoded = restored.homomorphic.encode_hamming_server(
-        restored.homomorphic.encrypt_vec_one(_VECTORS[0]),
-        restored.homomorphic.encrypt_vec_one(_VECTORS[2]),
+
+def test_paillier_lookup_gpu_pickle_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEVICE", "gpu")
+    if not PaillierLookupClient.has_gpu():
+        pytest.skip("paillier_lookup GPU backend is unavailable on this machine")
+
+    client = PaillierLookupClient(embed_len=_EMBED_LEN, key_len=_KEY_LEN)
+    restored = pickle.loads(pickle.dumps(client))
+
+    encoded = restored.encode_hamming_server(
+        restored.encrypt_vec_one(_VECTORS[0]),
+        restored.encrypt_vec_one(_VECTORS[1]),
     )
-    assert restored.homomorphic.decode_hamming_client_one(encoded) == _hamming(_VECTORS[0], _VECTORS[2])
-
-
-def test_paillier_lookup_gpu_accepts_precomputed_tables() -> None:
-    if not PaillierLookupGPUClient.is_available():
-        pytest.skip("paillier_lookup_gpu backend is unavailable on this machine")
-
-    ctx = ExecutionContext.create(
-        passphrase=_PASSPHRASE,
-        homomorphic_client_type="paillier_lookup_gpu",
-        embedding_length=_EMBED_LEN,
-        key_len=_KEY_LEN,
-    )
-    client = ctx.homomorphic
-    config_dict = json.loads(client.stringify_config())
-    pk = client.stringify_pk()
-    sk = client.stringify_sk()
-
-    cpu_clone = PaillierLookupCPU(
-        embed_len=_EMBED_LEN,
-        key_len=_KEY_LEN,
-        alpha_len=config_dict["alpha_len"],
-        skip_key_gen=True,
-    )
-    cpu_clone.load_stringified_keys(pk, sk)
-    cpu_clone.load_config(config_dict)
-    precomputed_tables = cpu_clone.dump_tables()
-
-    gpu_clone = PaillierLookupGPUClient(
-        embed_len=_EMBED_LEN,
-        key_len=_KEY_LEN,
-        alpha_len=config_dict["alpha_len"],
-        skip_key_gen=True,
-    )
-    gpu_clone.load_stringified_keys(pk, sk)
-    gpu_clone.load_config(config_dict, precomputed_tables=precomputed_tables)
-
-    encoded = gpu_clone.encode_hamming_server(
-        gpu_clone.encrypt_vec_one(_VECTORS[0]),
-        gpu_clone.encrypt_vec_one(_VECTORS[1]),
-    )
-    assert gpu_clone.decode_hamming_client_one(encoded) == _hamming(_VECTORS[0], _VECTORS[1])
+    assert restored.decode_hamming_client_one(encoded) == _hamming(_VECTORS[0], _VECTORS[1])

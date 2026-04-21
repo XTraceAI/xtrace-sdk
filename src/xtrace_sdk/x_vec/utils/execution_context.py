@@ -14,8 +14,6 @@ from xtrace_sdk.x_vec.crypto.key_provider import (  # noqa: E402
 from xtrace_sdk.x_vec.utils.xtrace_types import EncryptedVector  # noqa: E402
 from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient  # noqa: E402
 from xtrace_sdk.x_vec.crypto.paillier_lookup_client import PaillierLookupClient  # noqa: E402
-from xtrace_sdk.x_vec.crypto.paillier_gpu_client import PaillierGPUClient  # noqa: E402
-from xtrace_sdk.x_vec.crypto.paillier_lookup_gpu_client import PaillierLookupGPUClient  # noqa: E402
 from xtrace_sdk.x_vec.utils.settings import SUPPORTED_HOMOMORPHIC_CLIENTS  # noqa: E402
 
 if TYPE_CHECKING:
@@ -50,11 +48,15 @@ def _resolve_key_provider(
 
 
 def _canonical_homomorphic_type(client_name: str) -> str:
-    if client_name in {"PaillierClient", "PaillierGPUClient"}:
-        return "PaillierClient"
-    if client_name in {"PaillierLookupClient", "PaillierLookupGPUClient"}:
-        return "PaillierLookupClient"
-    return client_name
+    legacy_map = {
+        "PaillierGPUClient": "PaillierClient",
+        "PaillierLookupGPUClient": "PaillierLookupClient",
+    }
+    return legacy_map.get(client_name, client_name)
+
+
+def _canonical_json_string(value: str) -> str:
+    return json.dumps(json.loads(value), sort_keys=True, separators=(",", ":"))
 
 
 class ExecutionContext:
@@ -62,8 +64,7 @@ class ExecutionContext:
 
     An ``ExecutionContext`` is the root secret for a XTrace deployment. It holds:
 
-    - A homomorphic client (``PaillierClient``, ``PaillierLookupClient``,
-      ``PaillierGPUClient``, or ``PaillierLookupGPUClient``) whose secret key is used to
+    - A homomorphic client (``PaillierClient`` or ``PaillierLookupClient``) whose secret key is used to
       decrypt Hamming distances returned by the XTrace server.
     - An AES key supplied by a :class:`KeyProvider`, used to encrypt chunk content before upload.
 
@@ -103,8 +104,7 @@ class ExecutionContext:
 
         :param passphrase: Secret passphrase used to derive the AES encryption key and protect
             the homomorphic secret key at rest.
-        :param homomorphic_client_type: ``"paillier"``, ``"paillier_lookup"``,
-            ``"paillier_gpu"``, or ``"paillier_lookup_gpu"``.
+        :param homomorphic_client_type: ``"paillier"`` or ``"paillier_lookup"``.
         :param embedding_length: Dimension of the binary embedding vectors (must match the model).
         :param key_len: RSA modulus size in bits (minimum ``1024``).
         :param salt: Optional salt bytes for passphrase-based key derivation.
@@ -116,12 +116,7 @@ class ExecutionContext:
         """
         provider = _resolve_key_provider(key_provider, passphrase, salt)
 
-        if homomorphic_client_type.lower() in (
-            "paillier",
-            "paillier_lookup",
-            "paillier_gpu",
-            "paillier_lookup_gpu",
-        ) and embedding_length >= key_len:
+        if homomorphic_client_type.lower() in ("paillier", "paillier_lookup") and embedding_length >= key_len:
             raise ValueError(
                 f"embedding_length ({embedding_length}) must be strictly less than key_len ({key_len}). "
                 f"The Paillier-Lookup scheme requires embed_len < key_len to guarantee the padded "
@@ -132,10 +127,6 @@ class ExecutionContext:
             homomorphic_client = PaillierClient(embed_len=embedding_length, key_len=key_len)
         elif homomorphic_client_type.lower() == "paillier_lookup":
             homomorphic_client = PaillierLookupClient(embed_len=embedding_length, key_len=key_len)
-        elif homomorphic_client_type.lower() == "paillier_gpu":
-            homomorphic_client = PaillierGPUClient(embed_len=embedding_length, key_len=key_len)
-        elif homomorphic_client_type.lower() == "paillier_lookup_gpu":
-            homomorphic_client = PaillierLookupGPUClient(embed_len=embedding_length, key_len=key_len)
         else:
             raise ValueError(f"Unsupported homomorphic client type: {homomorphic_client_type}")
         ctx = cls(homomorphic_client, provider)
@@ -197,8 +188,10 @@ class ExecutionContext:
         _log.debug("Computing execution context hash...")
         data = self.to_dict_plain()
         data["type"] = _canonical_homomorphic_type(data["type"])
-        data['config'] = self.homomorphic.stringify_config()
-        str_data = json.dumps(data)
+        data["pk"] = _canonical_json_string(data["pk"])
+        data["sk"] = _canonical_json_string(data["sk"])
+        data["config"] = _canonical_json_string(data["config"])
+        str_data = json.dumps(data, sort_keys=True, separators=(",", ":"))
         hash_obj = hashlib.sha256(str_data.encode('utf-8'))
         return hash_obj.hexdigest()
 
@@ -212,7 +205,7 @@ class ExecutionContext:
 
     def _config_with_device(self) -> str:
         cfg = json.loads(self.homomorphic.stringify_config())
-        return json.dumps(cfg)
+        return json.dumps(cfg, sort_keys=True)
 
     def serialize_exec_context(self) -> str:
         """Serialise the execution context to a JSON string suitable for storage or transmission.
@@ -223,7 +216,7 @@ class ExecutionContext:
         :rtype: str
         :raises ValueError: If the homomorphic client type is not supported.
         """
-        homomorphic_type = type(self.homomorphic).__name__
+        homomorphic_type = _canonical_homomorphic_type(type(self.homomorphic).__name__)
 
         if homomorphic_type not in SUPPORTED_HOMOMORPHIC_CLIENTS:
             raise ValueError(f"Unsupported homomorphic client type: {homomorphic_type}")
@@ -266,18 +259,15 @@ class ExecutionContext:
         aes_client = AESClient(provider.get_key())
         sk = aes_client.decrypt(json_obj["sk"].encode('utf-8'))
         config = json.loads(json_obj["config"])
-        if json_obj["type"] not in SUPPORTED_HOMOMORPHIC_CLIENTS:
+        homomorphic_type = _canonical_homomorphic_type(json_obj["type"])
+        if homomorphic_type not in SUPPORTED_HOMOMORPHIC_CLIENTS:
             raise ValueError(f"Unsupported homomorphic client type: {json_obj['type']}")
 
         concrete_client: HomomorphicClient
-        if json_obj["type"] == "PaillierLookupClient":
+        if homomorphic_type == "PaillierLookupClient":
             concrete_client = PaillierLookupClient(embed_len=config["embed_len"], key_len=config["key_len"], alpha_len=config["alpha_len"], skip_key_gen=True)
-        elif json_obj["type"] == "PaillierLookupGPUClient":
-            concrete_client = PaillierLookupGPUClient(embed_len=config["embed_len"], key_len=config["key_len"], alpha_len=config["alpha_len"], skip_key_gen=True)
-        elif json_obj["type"] == "PaillierClient":
+        elif homomorphic_type == "PaillierClient":
             concrete_client = PaillierClient(embed_len=config["embed_len"], key_len=config["key_len"], skip_key_gen=True)
-        elif json_obj["type"] == "PaillierGPUClient":
-            concrete_client = PaillierGPUClient(embed_len=config["embed_len"], key_len=config["key_len"], skip_key_gen=True)
         else:
             raise ValueError(f"Unsupported homomorphic client type: {json_obj['type']}")
 
@@ -286,7 +276,7 @@ class ExecutionContext:
 
         # Inject tables if available to skip recomputation
         precomputed_tables = json_obj.get("tables")
-        if isinstance(concrete_client, (PaillierLookupClient, PaillierLookupGPUClient)):
+        if isinstance(concrete_client, PaillierLookupClient):
             concrete_client.load_config(config, precomputed_tables=precomputed_tables)
         else:
             load_config = getattr(concrete_client, "load_config", None)

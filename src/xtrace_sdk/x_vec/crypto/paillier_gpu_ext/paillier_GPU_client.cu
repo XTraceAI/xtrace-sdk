@@ -785,6 +785,69 @@ public:
     return {pk_n_hex_, pk_n2_hex_, sk_phi_hex_, sk_inv_hex_};
   }
 
+  std::string stringify_pk() const {
+    if (!have_keys_) {
+      throw std::runtime_error("stringify_pk: keys not initialized");
+    }
+    py::object json = py::module_::import("json");
+    bigint::big_int_t n(pk_n_hex_, 16);
+    bigint::big_int_t n_squared(pk_n2_hex_, 16);
+    bigint::big_int_t g;
+    mpz_add_ui(g.v, n.v, 1);
+
+    py::dict pk_dict;
+    pk_dict["g"] = g.to_string(10);
+    pk_dict["n"] = n.to_string(10);
+    pk_dict["n_squared"] = n_squared.to_string(10);
+    return py::cast<std::string>(json.attr("dumps")(pk_dict));
+  }
+
+  std::string stringify_sk() const {
+    if (!have_keys_) {
+      throw std::runtime_error("stringify_sk: keys not initialized");
+    }
+    py::object json = py::module_::import("json");
+    py::dict sk_dict;
+    sk_dict["phi"] = bigint::big_int_t(sk_phi_hex_, 16).to_string(10);
+    sk_dict["inv"] = bigint::big_int_t(sk_inv_hex_, 16).to_string(10);
+    return py::cast<std::string>(json.attr("dumps")(sk_dict));
+  }
+
+  std::string stringify_config() const {
+    py::object json = py::module_::import("json");
+    py::dict cfg;
+    cfg["embed_len"] = embed_len_;
+    cfg["key_len"] = key_len_;
+    return py::cast<std::string>(json.attr("dumps")(cfg));
+  }
+
+  void load_stringified_keys(const std::string &pk_json, const std::string &sk_json) {
+    py::object json = py::module_::import("json");
+    py::dict pk_dict = json.attr("loads")(pk_json).cast<py::dict>();
+    py::dict sk_dict = json.attr("loads")(sk_json).cast<py::dict>();
+
+    auto decimal_field_as_hex = [](const py::dict &d, const char *name) {
+      return bigint::big_int_t(py::cast<std::string>(py::str(d[name])), 10).to_string(16);
+    };
+
+    pk_n_hex_ = decimal_field_as_hex(pk_dict, "n");
+    pk_n2_hex_ = decimal_field_as_hex(pk_dict, "n_squared");
+    sk_phi_hex_ = decimal_field_as_hex(sk_dict, "phi");
+    sk_inv_hex_ = decimal_field_as_hex(sk_dict, "inv");
+    have_keys_ = true;
+  }
+
+  void load_config(const py::dict &config) {
+    embed_len_ = py::cast<int>(config["embed_len"]);
+    key_len_ = py::cast<int>(config["key_len"]);
+    chunk_len_ = key_len_ * 2;
+    if (embed_len_ > key_len_) {
+      chunk_num_ = 2 * embed_len_ / chunk_len_ + int((2 * embed_len_) % chunk_len_ != 0);
+    } else {
+      chunk_num_ = 1;
+    }
+  }
+
   // Batched encrypt: embeddings is [batch][embed_len] of 0/1, returns [batch][chunk_num] hex ciphers
   std::vector<std::vector<std::string>>
   encrypt(const std::vector<std::vector<int>> &embeddings, std::uint64_t seed = 0) const {
@@ -1070,6 +1133,11 @@ PYBIND11_MODULE(paillier_GPU_client, m) {
            py::arg("ciphers_hex_batch"))
       .def("get_pk_hex", &PaillierGPUClient::get_pk_hex)
       .def("get_keys_hex", &PaillierGPUClient::get_keys_hex)
+      .def("stringify_pk", &PaillierGPUClient::stringify_pk)
+      .def("stringify_sk", &PaillierGPUClient::stringify_sk)
+      .def("stringify_config", &PaillierGPUClient::stringify_config)
+      .def("load_stringified_keys", &PaillierGPUClient::load_stringified_keys)
+      .def("load_config", &PaillierGPUClient::load_config)
       .def_property_readonly("embed_len", &PaillierGPUClient::embed_len)
       .def_property_readonly("key_len", &PaillierGPUClient::key_len)
       .def_property_readonly("chunk_len", &PaillierGPUClient::chunk_len)

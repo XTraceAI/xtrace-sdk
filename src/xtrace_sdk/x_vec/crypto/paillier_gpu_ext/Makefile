@@ -7,10 +7,9 @@
 #   make KEY_BITS=2048 SMS="80 90"                 # compile for A100/H100 with 8192-bit n^2
 #   make KEY_BITS=1024 TPI=32 SMS="86"             # compile for RTX 30-series (sm_86)
 #
-# Directory layout (as you described):
-#   ./GPU_paillier_client/paillier_GPU_client.cu
-#   ./GPU_include/pybind11/...
-#   ./GPU_include/cgbn/...
+# Directory layout:
+#   ./paillier_gpu_ext/paillier_GPU_client.cu
+#   build_gpu_binaries.sh materialises include/{pybind11,cgbn} and passes INCDIR
 
 # -------- Parameters you can tweak on the command line --------
 KEY_BITS ?= 1024
@@ -28,7 +27,7 @@ EXT      := $(shell python3 -c "import sysconfig;print(sysconfig.get_config_var(
 TARGET   := paillier_GPU_client$(EXT)
 
 SRC      := paillier_GPU_client.cu
-INCDIR   := ../GPU_include
+INCDIR   ?= ../_gpu_build_include
 CXXSTD   := -std=c++17
 
 # Construct gencode flags for each SM
