@@ -1,5 +1,17 @@
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Device selection moved from the `DEVICE` environment variable to a `device=` constructor keyword** on `PaillierClient`, `PaillierLookupClient`, `ExecutionContext.create`, `ExecutionContext.load_from_disk`, and `ExecutionContext.load_from_remote`. The new default is `device="auto"`: clients probe for the GPU extension at construction time and fall back to CPU silently when no GPU is present. If a GPU is detected on the host (`/dev/nvidia0`, `nvidia-smi`, or `CUDA_VISIBLE_DEVICES`) but the extension fails to load, a warning is emitted instead of a silent CPU fallback so misconfigured GPU hosts don't quietly run on CPU. `device="gpu"` raises if the extension is unavailable; `device="cpu"` skips probing entirely.
+- The `DEVICE` environment variable is no longer read. Existing callers must migrate to the `device=` kwarg.
+
+### Added
+
+- `xtrace_sdk.x_vec.crypto.device.resolve_device` — shared device-resolution helper used by both Paillier clients and intended for future homomorphic clients with optional GPU backends.
+- `test_cross_device_interop` — parametrised test covering CPU↔GPU portability for both `PaillierClient` and `PaillierLookupClient`. Verifies that contexts saved on one device load correctly on the other (hash equality), and that ciphertexts produced on either backend round-trip correctly through the other for both encryption and server-side homomorphic add.
+
 ## [0.2.0] - 2026-04-18
 
 ### Added

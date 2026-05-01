@@ -40,11 +40,24 @@ source = "vcs"
 [tool.hatch.version.raw-options]
 local_scheme = "no-local-version"
 
+[tool.hatch.build]
+# Force-include the GPU extension binaries even though *.so is in .gitignore.
+# These are produced by build_gpu_binaries.sh prior to `uv build` in CI.
+artifacts = [
+    "src/xtrace_sdk/x_vec/crypto/paillier_gpu_ext/*.so",
+    "src/xtrace_sdk/x_vec/crypto/paillier_lookup_gpu_ext/*.so",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/xtrace_sdk"]
 
+# Custom hook flips the wheel from pure-Python (py3-none-any) to a
+# platform-specific tag when compiled extensions are bundled.
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
 [tool.hatch.build.targets.sdist]
-include = ["src/xtrace_sdk", "README.md", "LICENSE", "pyproject.toml"]
+include = ["src/xtrace_sdk", "README.md", "LICENSE", "pyproject.toml", "hatch_build.py"]
 exclude = ["tests", "docs", "benchmarks"]
 
 [project.optional-dependencies]

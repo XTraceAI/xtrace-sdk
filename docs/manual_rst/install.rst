@@ -96,19 +96,27 @@ The script spins up an ``nvidia/cuda`` devel container, fetches ``pybind11`` and
 loader picks them up automatically on import. No NVIDIA GPU is required on the
 *build* host — only ``nvcc``, which is provided by the Docker image.
 
-Enable the GPU backend at runtime by setting the ``DEVICE`` environment variable:
+Backend selection is automatic by default — clients probe for the GPU extension
+at construction time and fall back to CPU if it's unavailable. You can also
+force a backend explicitly with the ``device`` keyword argument:
 
 .. code-block:: python
 
-    import os
-    os.environ["DEVICE"] = "gpu"
-
     from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
-    client = PaillierClient(embed_len=512, key_len=1024)   # instantiates the GPU backend
 
-``DEVICE`` is read every time a client is instantiated, so it is safe to change
-at runtime (for example, to run CPU and GPU clients side by side in the same
-process).
+    # Auto-detect (default): GPU if available, else CPU.
+    client = PaillierClient(embed_len=512, key_len=1024)
+
+    # Force a backend. device="gpu" raises if the extension is unavailable.
+    cpu_client = PaillierClient(embed_len=512, key_len=1024, device="cpu")
+    gpu_client = PaillierClient(embed_len=512, key_len=1024, device="gpu")
+
+The same ``device`` keyword is accepted by
+:meth:`~xtrace_sdk.x_vec.utils.execution_context.ExecutionContext.create`,
+:meth:`~xtrace_sdk.x_vec.utils.execution_context.ExecutionContext.load_from_disk`,
+and :meth:`~xtrace_sdk.x_vec.utils.execution_context.ExecutionContext.load_from_remote`,
+so a context saved on a CPU host can be loaded on a GPU host (and vice versa)
+without modification — keys are portable, the device is a runtime choice.
 
 Requirements
 ^^^^^^^^^^^^

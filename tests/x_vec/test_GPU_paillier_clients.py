@@ -30,11 +30,9 @@ def _hamming(lhs: list[int], rhs: list[int]) -> int:
     ],
 )
 def test_gpu_clients_expose_execution_context_protocol(
-    monkeypatch: pytest.MonkeyPatch,
     client_cls: type[PaillierClient] | type[PaillierLookupClient],
     client_type: str,
 ) -> None:
-    monkeypatch.setenv("DEVICE", "gpu")
     if not client_cls.has_gpu():
         pytest.skip(f"{client_type} GPU backend is unavailable on this machine")
 
@@ -43,6 +41,7 @@ def test_gpu_clients_expose_execution_context_protocol(
         homomorphic_client_type=client_type,
         embedding_length=_EMBED_LEN,
         key_len=_KEY_LEN,
+        device="gpu",
     )
     client = ctx.homomorphic
 
@@ -82,6 +81,7 @@ def test_gpu_clients_expose_execution_context_protocol(
         embed_len=_EMBED_LEN,
         key_len=_KEY_LEN,
         skip_key_gen=True,
+        device="gpu",
     )
     clone.load_stringified_keys(pk, sk)
     if isinstance(clone, PaillierLookupClient):
@@ -98,35 +98,77 @@ def test_gpu_clients_expose_execution_context_protocol(
     assert clone.decode_hamming_client_one(clone_encoded) == _hamming(_VECTORS[0], _VECTORS[1])
 
 
-def test_lookup_exec_context_hash_matches_across_cpu_and_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEVICE", "cpu")
-    cpu_ctx = ExecutionContext.create(
+@pytest.mark.parametrize(
+    ("client_cls", "client_type"),
+    [
+        pytest.param(PaillierClient, "paillier", id="paillier"),
+        pytest.param(PaillierLookupClient, "paillier_lookup", id="paillier_lookup"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("source_device", "target_device"),
+    [
+        pytest.param("cpu", "gpu", id="cpu_to_gpu"),
+        pytest.param("gpu", "cpu", id="gpu_to_cpu"),
+    ],
+)
+def test_cross_device_interop(
+    client_cls: type[PaillierClient] | type[PaillierLookupClient],
+    client_type: str,
+    source_device: str,
+    target_device: str,
+) -> None:
+    """A context created on one device and loaded on the other must:
+
+    1. Hash equal (keys are portable; device must not affect identity).
+    2. Round-trip: ciphertexts from either side decode correctly on the other.
+    """
+    if not client_cls.has_gpu():
+        pytest.skip(f"{client_type} GPU backend is unavailable on this machine")
+
+    source_ctx = ExecutionContext.create(
         passphrase=_PASSPHRASE,
-        homomorphic_client_type="paillier_lookup",
+        homomorphic_client_type=client_type,
         embedding_length=_EMBED_LEN,
         key_len=_KEY_LEN,
+        device=source_device,
     )
-
-    monkeypatch.setenv("DEVICE", "gpu")
-    if not PaillierLookupClient.has_gpu():
-        pytest.skip("paillier_lookup GPU backend is unavailable on this machine")
-
-    restored_gpu = ExecutionContext._from_serialized_exec_context(
-        json.loads(cpu_ctx.serialize_exec_context()),
+    target_ctx = ExecutionContext._from_serialized_exec_context(
+        json.loads(source_ctx.serialize_exec_context()),
         passphrase=_PASSPHRASE,
+        device=target_device,
     )
 
-    assert cpu_ctx.hash() == restored_gpu.hash()
-    assert restored_gpu.device == "gpu"
-    assert type(restored_gpu.homomorphic).__name__ == "PaillierLookupClient"
+    assert source_ctx.device == source_device
+    assert target_ctx.device == target_device
+    assert source_ctx.hash() == target_ctx.hash()
+
+    src = source_ctx.homomorphic
+    tgt = target_ctx.homomorphic
+    expected = _hamming(_VECTORS[0], _VECTORS[1])
+
+    # Encrypt + server-encode on source, decode on target.
+    src_a = src.encrypt_vec_one(_VECTORS[0])
+    src_b = src.encrypt_vec_one(_VECTORS[1])
+    encoded_on_source = src.encode_hamming_server(src_a, src_b)
+    assert tgt.decode_hamming_client_one(encoded_on_source) == expected
+
+    # Encrypt on source, server-encode on target, decode on target.
+    encoded_on_target = tgt.encode_hamming_server(src_a, src_b)
+    assert tgt.decode_hamming_client_one(encoded_on_target) == expected
+
+    # Reverse direction: encrypt on target, server-encode on source, decode on source.
+    tgt_a = tgt.encrypt_vec_one(_VECTORS[0])
+    tgt_b = tgt.encrypt_vec_one(_VECTORS[1])
+    encoded_back = src.encode_hamming_server(tgt_a, tgt_b)
+    assert src.decode_hamming_client_one(encoded_back) == expected
 
 
-def test_paillier_lookup_gpu_pickle_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEVICE", "gpu")
+def test_paillier_lookup_gpu_pickle_roundtrip() -> None:
     if not PaillierLookupClient.has_gpu():
         pytest.skip("paillier_lookup GPU backend is unavailable on this machine")
 
-    client = PaillierLookupClient(embed_len=_EMBED_LEN, key_len=_KEY_LEN)
+    client = PaillierLookupClient(embed_len=_EMBED_LEN, key_len=_KEY_LEN, device="gpu")
     restored = pickle.loads(pickle.dumps(client))
 
     encoded = restored.encode_hamming_server(

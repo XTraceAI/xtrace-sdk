@@ -1,16 +1,12 @@
 import json
-import os
 from typing import Any
 
 import gmpy2
 
+from xtrace_sdk.x_vec.crypto.device import DeviceMode, resolve_device
 from xtrace_sdk.x_vec.crypto.encryption.paillier_lookup import PaillierLookup
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.utils.xtrace_types import EncryptedVector, PaillierEncryptedNumber, PaillierLookupKeyPair
-
-
-def _resolve_device() -> str:
-    return os.getenv("DEVICE", "cpu")
 
 
 def _load_gpu_backend() -> type[Any]:
@@ -215,9 +211,22 @@ class PaillierLookupCPU:
     
 
 class PaillierLookupClient(HammingClientBase):
-    """Paillier-Lookup client that dispatches to CPU or GPU at instantiation time."""
+    """Paillier-Lookup client that dispatches to CPU or GPU based on the ``device`` kwarg.
 
-    def __init__(self, embed_len: int = 512, key_len: int = 1024, alpha_len: int = 50, skip_key_gen: bool = False) -> None:
+    With ``device="auto"`` (the default), the GPU extension is probed at
+    construction time and used if available, otherwise the CPU implementation
+    runs. ``"cpu"`` and ``"gpu"`` force a backend; ``"gpu"`` raises if the
+    extension cannot be loaded.
+    """
+
+    def __init__(
+        self,
+        embed_len: int = 512,
+        key_len: int = 1024,
+        alpha_len: int = 50,
+        skip_key_gen: bool = False,
+        device: DeviceMode = "auto",
+    ) -> None:
         self.alpha_len = alpha_len
         self.key_len = key_len
         self.embed_len = embed_len
@@ -227,9 +236,8 @@ class PaillierLookupClient(HammingClientBase):
         else:
             self.chunk_num = 1
 
-        self.device = _resolve_device()
-        if self.device == "gpu":
-            gpu_cls = _load_gpu_backend()
+        self.device, gpu_cls = resolve_device(device, _load_gpu_backend)
+        if self.device == "gpu" and gpu_cls is not None:
             self.client: Any = gpu_cls(
                 embed_len=embed_len,
                 key_len=key_len,
@@ -346,7 +354,6 @@ class PaillierLookupClient(HammingClientBase):
         return state
 
     def __setstate__(self, state: dict) -> None:
-        self.device = _resolve_device()
         self.embed_len = state["embed_len"]
         self.key_len = state["key_len"]
         self.alpha_len = state["alpha_len"]
@@ -356,8 +363,8 @@ class PaillierLookupClient(HammingClientBase):
         else:
             self.chunk_num = 1
 
-        if self.device == "gpu":
-            gpu_cls = _load_gpu_backend()
+        self.device, gpu_cls = resolve_device("auto", _load_gpu_backend)
+        if self.device == "gpu" and gpu_cls is not None:
             self.client = gpu_cls(
                 embed_len=self.embed_len,
                 key_len=self.key_len,

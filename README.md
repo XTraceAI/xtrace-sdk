@@ -71,7 +71,7 @@ Requires Python 3.11+.
 
 ## GPU acceleration (optional)
 
-The Paillier homomorphic encryption path has an optional CUDA backend that is significantly faster than the CPU implementation for large batches. It's opt-in: by default the SDK runs on CPU and requires no extra setup.
+The Paillier homomorphic encryption path has an optional CUDA backend that is significantly faster than the CPU implementation for large batches.
 
 **Prebuilt binaries are not currently shipped on PyPI.** To use the GPU path, compile the pybind11 extensions yourself:
 
@@ -80,14 +80,20 @@ The Paillier homomorphic encryption path has an optional CUDA backend that is si
 ./build_gpu_binaries.sh
 ```
 
-This produces two `.so` files in place under `src/xtrace_sdk/x_vec/crypto/paillier-GPU-{,lookup-}client/`. The runtime loader picks them up automatically once they exist.
+This produces two `.so` files in place under `src/xtrace_sdk/x_vec/crypto/paillier-GPU-{,lookup-}client/`.
 
-Enable the GPU path at runtime by setting `DEVICE=gpu` before instantiating a Paillier client:
+Backend selection is automatic by default — clients probe for the GPU extension at construction time and fall back to CPU if it's unavailable. You can also force a backend explicitly:
 
 ```python
-import os
-os.environ["DEVICE"] = "gpu"
 from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
+from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+
+# Auto-detect (default): GPU if available, else CPU.
+client = PaillierClient(embed_len=512, key_len=1024)
+
+# Force a backend. device="gpu" raises if the extension is unavailable.
+client = PaillierClient(embed_len=512, key_len=1024, device="cpu")
+ctx = ExecutionContext.create(passphrase="...", device="gpu")
 ```
 
 **Requirements:**

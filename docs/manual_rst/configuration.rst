@@ -20,17 +20,20 @@ Both ``PaillierClient`` and ``PaillierLookupClient`` run on CPU by default.
     script. See :doc:`install` → *GPU acceleration* for build instructions and
     runtime requirements (NVIDIA driver ≥ 550).
 
-Once the compiled extension is in place, activate the GPU backend by setting
-``DEVICE=gpu`` before instantiating a client. The value is read at each
-instantiation, so CPU and GPU clients can coexist in the same process:
+Once the compiled extension is in place, the GPU backend is selected
+automatically by default — clients probe for it at construction time and fall
+back to CPU if it's unavailable. Pass ``device="cpu"`` or ``device="gpu"`` to
+force a backend (CPU and GPU clients can coexist in the same process):
 
 .. code-block:: python
 
-    import os
-    os.environ["DEVICE"] = "gpu"
-
     from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
+
+    # Auto-detect: GPU if available, else CPU.
     client = PaillierClient(embed_len=512, key_len=1024)
+
+    # Force a backend. device="gpu" raises if the extension is unavailable.
+    gpu_client = PaillierClient(embed_len=512, key_len=1024, device="gpu")
 
 **Paillier** — standard Paillier encryption:
 
@@ -240,7 +243,3 @@ The following environment variables are read automatically:
      - Default path to a saved execution context.
    * - ``INFERENCE_API_KEY``
      - API key for your inference provider (OpenAI, Redpill, etc.).
-   * - ``DEVICE``
-     - Backend for ``PaillierClient`` / ``PaillierLookupClient``. Set to
-       ``gpu`` to use the CUDA extension (must be compiled — see :doc:`install`).
-       Defaults to ``cpu``. Read at each client instantiation.

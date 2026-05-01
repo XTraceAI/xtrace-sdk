@@ -36,8 +36,10 @@ GENCODE  := $(foreach sm,$(SMS),-gencode arch=compute_$(sm),code=sm_$(sm))
 # Include paths
 INCLUDES := -I$(INCDIR) -I$(INCDIR)/pybind11 -I$(INCDIR)/cgbn -I$(CUDA_PATH)/include -I$(PY_INC)
 
-# Build flags
+# Build flags. -cudart static keeps libcudart embedded so the wheel doesn't
+# require the user to have a matching libcudart.so installed at runtime.
 NVCCFLAGS := $(CXXSTD) -O3 -Xcompiler -fPIC -shared \
+             -cudart static \
              -DKEY_BITS=$(KEY_BITS) -DCGBN_TPI=$(TPI) -DCGBN_USE_GMP \
              -Wno-deprecated-gpu-targets \
              $(GENCODE) $(INCLUDES)

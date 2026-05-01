@@ -1,16 +1,12 @@
 import json
-import os
 from typing import Any
 
 import gmpy2
 
+from xtrace_sdk.x_vec.crypto.device import DeviceMode, resolve_device
 from xtrace_sdk.x_vec.crypto.encryption.paillier import Paillier
 from xtrace_sdk.x_vec.crypto.hamming_client_base import HammingClientBase
 from xtrace_sdk.x_vec.utils.xtrace_types import EncryptedVector, PaillierEncryptedNumber, PaillierKeyPair
-
-
-def _resolve_device() -> str:
-    return os.getenv("DEVICE", "cpu")
 
 
 def _load_gpu_backend() -> type[Any]:
@@ -115,9 +111,21 @@ class PaillierCPU:
 
 
 class PaillierClient(HammingClientBase):
-    """Paillier client that dispatches to CPU or GPU based on ``DEVICE`` at instantiation time."""
+    """Paillier client that dispatches to CPU or GPU based on the ``device`` kwarg.
 
-    def __init__(self, embed_len: int = 512, key_len: int = 1024, skip_key_gen: bool = False) -> None:
+    With ``device="auto"`` (the default), the GPU extension is probed at
+    construction time and used if available, otherwise the CPU implementation
+    runs. ``"cpu"`` and ``"gpu"`` force a backend; ``"gpu"`` raises if the
+    extension cannot be loaded.
+    """
+
+    def __init__(
+        self,
+        embed_len: int = 512,
+        key_len: int = 1024,
+        skip_key_gen: bool = False,
+        device: DeviceMode = "auto",
+    ) -> None:
         self.embed_len = embed_len
         self.key_len = key_len
         self.chunk_len = key_len * 2
@@ -126,9 +134,8 @@ class PaillierClient(HammingClientBase):
         else:
             self.chunk_num = 1
 
-        self.device = _resolve_device()
-        if self.device == "gpu":
-            gpu_cls = _load_gpu_backend()
+        self.device, gpu_cls = resolve_device(device, _load_gpu_backend)
+        if self.device == "gpu" and gpu_cls is not None:
             self.client: Any = gpu_cls(embed_len=embed_len, key_len=key_len, skip_key_gen=skip_key_gen)
         else:
             self.client = PaillierCPU(embed_len=embed_len, key_len=key_len, skip_key_gen=skip_key_gen)
