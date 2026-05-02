@@ -741,6 +741,8 @@ static std::vector<std::string> gpu_pointwise_mulmod_hex(const std::vector<std::
 // ---------------------- PaillierGPUClient class ----------------------
 class PaillierGPUClient {
 public:
+  static int max_key_len() { return KEY_BITS; }
+
   PaillierGPUClient(int embed_len = 512, int key_len = KEY_BITS, bool skip_key_gen = false)
       : embed_len_(embed_len),
         key_len_(key_len),
@@ -749,6 +751,13 @@ public:
                                           (((2 * embed_len) % (key_len * 2)) != 0))
                                        : 1),
         have_keys_(!skip_key_gen) {
+    if (key_len_ > KEY_BITS) {
+      throw std::runtime_error(
+          "PaillierGPUClient: key_len=" + std::to_string(key_len_) +
+          " exceeds the compile-time KEY_BITS=" + std::to_string(KEY_BITS) +
+          " of this GPU extension. Rebuild with a larger KEY_BITS "
+          "(see build_gpu_binaries.sh) or use a smaller key_len.");
+    }
     if (!skip_key_gen) {
       keys_ = PaillierCPU::key_gen(static_cast<unsigned>(key_len_));
       pk_n_hex_ = keys_.pk.n.to_string(16);
@@ -834,12 +843,30 @@ public:
     pk_n2_hex_ = decimal_field_as_hex(pk_dict, "n_squared");
     sk_phi_hex_ = decimal_field_as_hex(sk_dict, "phi");
     sk_inv_hex_ = decimal_field_as_hex(sk_dict, "inv");
+
+    bigint::big_int_t n2(pk_n2_hex_, 16);
+    const size_t n2_bits = mpz_sizeinbase(n2.v, 2);
+    if (n2_bits > static_cast<size_t>(PAILLIER_N_SQUARED_BITS)) {
+      throw std::runtime_error(
+          "load_stringified_keys: n_squared has " + std::to_string(n2_bits) +
+          " bits, exceeding the compile-time capacity of " +
+          std::to_string(PAILLIER_N_SQUARED_BITS) +
+          " bits (KEY_BITS=" + std::to_string(KEY_BITS) +
+          "). Rebuild the GPU extension with a larger KEY_BITS.");
+    }
     have_keys_ = true;
   }
 
   void load_config(const py::dict &config) {
     embed_len_ = py::cast<int>(config["embed_len"]);
-    key_len_ = py::cast<int>(config["key_len"]);
+    const int new_key_len = py::cast<int>(config["key_len"]);
+    if (new_key_len > KEY_BITS) {
+      throw std::runtime_error(
+          "load_config: key_len=" + std::to_string(new_key_len) +
+          " exceeds the compile-time KEY_BITS=" + std::to_string(KEY_BITS) +
+          " of this GPU extension.");
+    }
+    key_len_ = new_key_len;
     chunk_len_ = key_len_ * 2;
     if (embed_len_ > key_len_) {
       chunk_num_ = 2 * embed_len_ / chunk_len_ + int((2 * embed_len_) % chunk_len_ != 0);
@@ -1114,7 +1141,9 @@ private:
 
 // ---------------------- Pybind module ----------------------
 PYBIND11_MODULE(paillier_GPU_client, m) {
+  m.attr("KEY_BITS") = py::int_(KEY_BITS);
   py::class_<PaillierGPUClient>(m, "PaillierGPUClient")
+      .def_static("max_key_len", &PaillierGPUClient::max_key_len)
       .def(py::init<int, int, bool>(),
            py::arg("embed_len") = 512,
            py::arg("key_len") = KEY_BITS,

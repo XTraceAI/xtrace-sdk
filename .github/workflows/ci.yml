@@ -94,14 +94,14 @@ jobs:
           XTRACE_ORG_ID:    ${{ secrets.XTRACE_ORG_ID }}
         run: uv run pytest tests/x_vec/test_hamming_search.py -v
 
-  # ── GPU tests (run on self-hosted T4 runner; consumes paid minutes) ────
+  # ── GPU tests (run on GitHub-managed partner GPU runner; paid minutes) ─
   # Triggers are deliberately narrow: never on pull_request (fork-spam risk),
-  # only on internal pushes / manual dispatch / scheduled nightlies / tags.
-  # Requires `gpu` environment with required reviewers; runner labelled
-  # `gpu-runner`. The committed .so already targets sm_75+ so no rebuild here.
+  # only on internal pushes / manual dispatch / tags. Requires `gpu`
+  # environment with required reviewers; runner label is `gpu-runner`. The
+  # committed .so already targets sm_75+ so no rebuild here.
   gpu-tests:
     name: GPU tests (paillier client)
-    runs-on: [self-hosted, gpu-runner]
+    runs-on: gpu-runner
     timeout-minutes: 30
     needs: qa
     if: >-
