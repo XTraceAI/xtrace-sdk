@@ -24,10 +24,11 @@
 #include <mutex>
 #include <unordered_map>
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <fstream>
 #include <sstream>
 #include <iostream>
-#include <ctime>
 
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -131,34 +132,55 @@ inline bigint::big_int_t gcd(const bigint::big_int_t &a, const bigint::big_int_t
   return r;
 }
 
-// RAII GMP RNG
-struct gmp_rand_ctx {
-  gmp_randstate_t st;
-  gmp_rand_ctx() {
-    gmp_randinit_default(st);
-    // Simple seeding based on current time; no std::random_device / chrono,
-    // to avoid extra dependencies in NVCC builds.
-    unsigned long seed = static_cast<unsigned long>(std::time(nullptr));
-    mpz_t mseed;
-    mpz_init_set_ui(mseed, seed);
-    gmp_randseed(st, mseed);
-    mpz_clear(mseed);
+inline void fill_os_random(void *data, std::size_t size) {
+  std::ifstream rng("/dev/urandom", std::ios::in | std::ios::binary);
+  if (!rng) {
+    throw std::runtime_error("secure randomness: failed to open /dev/urandom");
   }
-  ~gmp_rand_ctx() { gmp_randclear(st); }
-  gmp_rand_ctx(const gmp_rand_ctx &) = delete;
-  gmp_rand_ctx &operator=(const gmp_rand_ctx &) = delete;
-};
+  const auto requested = static_cast<std::streamsize>(size);
+  rng.read(static_cast<char *>(data), requested);
+  if (rng.gcount() != requested) {
+    throw std::runtime_error("secure randomness: failed to read enough bytes from /dev/urandom");
+  }
+}
 
-inline bigint::big_int_t random_prime_bits(unsigned bits, gmp_rand_ctx &rng) {
+inline bigint::big_int_t random_bits(unsigned bits) {
+  if (bits == 0) throw std::invalid_argument("bits must be > 0");
+  const std::size_t byte_count = (static_cast<std::size_t>(bits) + 7) / 8;
+  std::vector<unsigned char> bytes(byte_count);
+  fill_os_random(bytes.data(), bytes.size());
+
+  const unsigned excess_bits = static_cast<unsigned>(byte_count * 8 - bits);
+  if (excess_bits > 0) {
+    bytes[0] &= static_cast<unsigned char>(0xFFu >> excess_bits);
+  }
+
+  bigint::big_int_t out;
+  mpz_import(out.v, bytes.size(), 1, 1, 0, 0, bytes.data());
+  return out;
+}
+
+inline bigint::big_int_t random_below(const bigint::big_int_t &upper) {
+  if (mpz_sgn(upper.v) <= 0) {
+    throw std::invalid_argument("random_below: upper bound must be positive");
+  }
+  const unsigned bits = static_cast<unsigned>(mpz_sizeinbase(upper.v, 2));
+  bigint::big_int_t value;
+  do {
+    value = random_bits(bits);
+  } while (mpz_cmp(value.v, upper.v) >= 0);
+  return value;
+}
+
+inline bigint::big_int_t random_prime_bits(unsigned bits) {
   if (bits < 2) throw std::invalid_argument("bits must be >= 2");
-  bigint::big_int_t x;
-  mpz_urandomb(x.v, rng.st, bits);
+  bigint::big_int_t x = random_bits(bits);
   mpz_setbit(x.v, bits - 1);
   if (mpz_even_p(x.v)) mpz_add_ui(x.v, x.v, 1);
   bigint::big_int_t p;
   mpz_nextprime(p.v, x.v);
   while (static_cast<unsigned>(mpz_sizeinbase(p.v, 2)) != bits) {
-    mpz_urandomb(x.v, rng.st, bits);
+    x = random_bits(bits);
     mpz_setbit(x.v, bits - 1);
     if (mpz_even_p(x.v)) mpz_add_ui(x.v, x.v, 1);
     mpz_nextprime(p.v, x.v);
@@ -224,7 +246,6 @@ static bigint::big_int_t lift_to_p2_with_p_component(const bigint::big_int_t &g_
 
 // gen_dsa_params_custom: generate (p,q,g) with p_bits for p and q_bits for q, and g of order q mod p.
 static void gen_dsa_params_custom(unsigned p_bits, unsigned q_bits,
-                                  bigint::gmp_rand_ctx &rng,
                                   bigint::big_int_t &p_out,
                                   bigint::big_int_t &q_out,
                                   bigint::big_int_t &g_out) {
@@ -234,7 +255,7 @@ static void gen_dsa_params_custom(unsigned p_bits, unsigned q_bits,
   }
 
   // q: exact q_bits prime
-  big_int_t q = random_prime_bits(q_bits, rng);
+  big_int_t q = random_prime_bits(q_bits);
 
   // choose k so that p = k*q + 1 has exactly p_bits bits
   big_int_t two_pow_p_1, two_pow_p;
@@ -261,7 +282,7 @@ static void gen_dsa_params_custom(unsigned p_bits, unsigned q_bits,
     mpz_tdiv_q_2exp(span.v, span.v, 1);
     mpz_add_ui(span.v, span.v, 1);
 
-    mpz_urandomm(t.v, rng.st, span.v);        // t in [0, span-1]
+    t = random_below(span);                    // t in [0, span-1]
     mpz_mul_2exp(k.v, t.v, 1);                // 2*t
     mpz_add(k.v, k.v, k_lo.v);                // k = k_lo + 2*t
 
@@ -287,7 +308,7 @@ static void gen_dsa_params_custom(unsigned p_bits, unsigned q_bits,
 
   while (true) {
     // pick h in [2, p-1]
-    mpz_urandomm(h.v, rng.st, p_minus2.v);  // 0..p-3
+    h = random_below(p_minus2);             // 0..p-3
     mpz_add_ui(h.v, h.v, 2);               // 2..p-1
     mpz_powm(g.v, h.v, e.v, p.v);
     if (mpz_cmp_ui(g.v, 1) != 0) {
@@ -324,7 +345,6 @@ class PaillierCPU {
 public:
   static PaillierKeyPairCPU key_gen(unsigned prime_bits, unsigned alpha_bits) {
     using namespace bigint;
-    gmp_rand_ctx rng;
     while (true) {
       // --- pick q-bit split close to requested alpha_len ---
       unsigned q_bits_bound = alpha_bits;
@@ -333,8 +353,8 @@ public:
 
       big_int_t p1, q1, g1;
       big_int_t p2, q2, g2;
-      gen_dsa_params_custom(prime_bits, q_bits_1, rng, p1, q1, g1);
-      gen_dsa_params_custom(prime_bits, q_bits_2, rng, p2, q2, g2);
+      gen_dsa_params_custom(prime_bits, q_bits_1, p1, q1, g1);
+      gen_dsa_params_custom(prime_bits, q_bits_2, p2, q2, g2);
 
       big_int_t p = p1;
       big_int_t q = p2;
@@ -577,8 +597,6 @@ precompute_noise_table(const PaillierKeyPairCPU &keys) {
   const big_int_t &n = keys.pk.n;
   const big_int_t &n2 = keys.pk.n_squared;
 
-  gmp_rand_ctx rng;
-
   big_int_t g_n;
   mpz_powm(g_n.v, g.v, n.v, n2.v);
 
@@ -588,7 +606,7 @@ precompute_noise_table(const PaillierKeyPairCPU &keys) {
     big_int_t r;
     // Sample r uniformly in [1, n-1] with gcd(r, n) = 1.
     while (true) {
-      mpz_urandomm(r.v, rng.st, n.v);  // 0 <= r < n
+      r = random_below(n);  // 0 <= r < n
       if (mpz_cmp_ui(r.v, 0) == 0) {
         continue;
       }
@@ -652,16 +670,6 @@ get_cached_g_table(const std::string &cache_key, const PaillierKeyPairCPU &keys,
 
 
 // ------------------ Arithmetic helpers ------------------
-
-// --- RNG: xorshift64* ---
-static __device__ __forceinline__ uint64_t xorshift64star(uint64_t &s) {
-  s ^= s >> 12; s ^= s << 25; s ^= s >> 27;
-  return s * 0x2545F4914F6CDD1DULL;
-}
-
-static __device__ __forceinline__ uint32_t rand32(uint64_t &s) {
-  return (uint32_t)(xorshift64star(s) >> 32);
-}
 
 // Extract pointer to 32-bit limbs from mem_t (little-endian)
 static __device__ __forceinline__ const uint32_t* limbs_of(const mem_t *m) {
@@ -778,48 +786,6 @@ static __device__ void gcd_big(env_t &env,
   }
 }
 
-// Sample r in [1, n-1] and (optionally) ensure gcd(r, n) = 1.
-// Very unlikely to need retries.
-static __device__ void sample_r(env_t &env,
-                                typename env_t::cgbn_t &r,
-                                const typename env_t::cgbn_t &n,
-                                uint64_t seed,
-                                int instance_id,
-                                bool ensure_coprime=true) {
-  typename env_t::cgbn_t tmp, a, b;
-  typename env_t::cgbn_t n_minus_1;
-  cgbn_sub_ui32(env, n_minus_1, n, 1);
-
-  // seed per instance
-  uint64_t s = seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(instance_id + 1)) ^ (uint64_t)clock64();
-
-  for (int tries=0; tries<16; ++tries) {
-    // Fill a mem_t with random words
-    mem_t rmem;
-    uint32_t *rw = reinterpret_cast<uint32_t*>(&rmem);
-    for (int i=0; i<LIMBS; ++i) rw[i] = rand32(s);
-
-    // r = (rmem % (n-1)) + 1  -> ensures 1..n-1
-    cgbn_load(env, tmp, &rmem);
-    cgbn_rem(env, tmp, tmp, n_minus_1);
-    cgbn_add_ui32(env, r, tmp, 1);
-
-    if (!ensure_coprime) return;
-
-    // Check gcd(r, n) == 1
-    cgbn_set(env, a, n);
-    cgbn_set(env, b, r);
-    gcd_big(env, a, b);                 // gcd in 'a'
-    if (cgbn_compare_ui32(env, a, 1) == 0)
-      return; // good
-  }
-
-  // Fallback: r=1 (extremely unlikely path)
-  cgbn_set_ui32(env, r, 1);
-}
-
-
-
 // Build a mask that selects bits at MSB-first positions 1,3,5,... within width=chunk_len
 // mapped to little-endian limb storage used by cgbn_mem_t<BITS>.
 static inline mem_t make_odd_mask_host(const int chunk_len) {
@@ -882,8 +848,8 @@ __global__ void encrypt_kernel(error_report_t *report,
                                mem_t *NOISE_TABLE, // [noise_table_size]
                                int message_chunks,
                                int noise_table_size,
-                               mem_t *out_ct,          // [batch * chunk_num]
-                               uint64_t seed) {
+                               const uint32_t *random_words,
+                               mem_t *out_ct) {          // [batch * chunk_num]
   int thread   = blockIdx.x * blockDim.x + threadIdx.x;
   int instance = thread / CGBN_TPI;
   int total    = batch * chunk_num;
@@ -963,10 +929,8 @@ __global__ void encrypt_kernel(error_report_t *report,
   typename env_t::cgbn_t noise;
   cgbn_set_ui32(env, noise, 1);
 
-  // Simple per-instance RNG seed, reusing xorshift helper.
-  uint64_t s = seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(instance + 1)) ^ (uint64_t)clock64();
   for (int k = 0; k < PAILLIER_NOISE_MULTIPLES; ++k) {
-    uint32_t r32 = rand32(s);
+    uint32_t r32 = random_words[instance * PAILLIER_NOISE_MULTIPLES + k];
     int idx = (int)(r32 % (uint32_t)noise_table_size);
     typename env_t::cgbn_t entry;
     cgbn_load(env, entry, &NOISE_TABLE[idx]);
@@ -993,8 +957,8 @@ __global__ void encrypt_cts_kernel(error_report_t *report,
                                    mem_t *G_TABLE,         // [message_chunks * table_size]
                                    mem_t *NOISE_TABLE,     // [noise_table_size]
                                    int noise_table_size,
-                                   mem_t *out_ct,          // [batch]
-                                   uint64_t seed) {
+                                   const uint32_t *random_words,
+                                   mem_t *out_ct) {          // [batch]
   int thread   = blockIdx.x * blockDim.x + threadIdx.x;
   int instance = thread / CGBN_TPI;
   if (instance >= batch) return;
@@ -1029,9 +993,8 @@ __global__ void encrypt_cts_kernel(error_report_t *report,
   typename env_t::cgbn_t noise;
   cgbn_set_ui32(env, noise, 1);
 
-  uint64_t s = seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(instance + 1)) ^ (uint64_t)clock64();
   for (int k = 0; k < PAILLIER_NOISE_MULTIPLES; ++k) {
-    uint32_t r32 = rand32(s);
+    uint32_t r32 = random_words[instance * PAILLIER_NOISE_MULTIPLES + k];
     int idx = (int)(r32 % (uint32_t)noise_table_size);
     typename env_t::cgbn_t entry;
     cgbn_load(env, entry, &NOISE_TABLE[idx]);
@@ -1100,8 +1063,8 @@ __global__ void decrypt_then_reencrypt_kernel(error_report_t *report,
                                               mem_t *NOISE_TABLE_b, // [noise_table_size]
                                               int message_chunks,
                                               int noise_table_size,
-                                              mem_t *OUT_CT,       // [batch] ciphertexts under key_b
-                                              uint64_t seed) {
+                                              const uint32_t *random_words,
+                                              mem_t *OUT_CT) {       // [batch] ciphertexts under key_b
   int thread   = blockIdx.x * blockDim.x + threadIdx.x;
   int instance = thread / CGBN_TPI;
   if (instance >= batch) return;
@@ -1154,9 +1117,8 @@ __global__ void decrypt_then_reencrypt_kernel(error_report_t *report,
   // Sample noise using precomputed table
   typename env_t::cgbn_t noise;
   cgbn_set_ui32(env, noise, 1);
-  uint64_t s = seed ^ (0x9E3779B97F4A7C15ULL * (uint64_t)(instance + 1)) ^ (uint64_t)clock64();
   for (int k = 0; k < PAILLIER_NOISE_MULTIPLES; ++k) {
-    uint32_t r32 = rand32(s);
+    uint32_t r32 = random_words[instance * PAILLIER_NOISE_MULTIPLES + k];
     int idx = (int)(r32 % (uint32_t)noise_table_size);
     typename env_t::cgbn_t entry;
     cgbn_load(env, entry, &NOISE_TABLE_b[idx]);
@@ -1909,7 +1871,7 @@ public:
 
   // Batched encrypt: embeddings is [batch][embed_len] of 0/1, returns [batch][chunk_num] ciphers
   py::list
-  encrypt(const std::vector<std::vector<int>> &embeddings, std::uint64_t seed = 0) const {
+  encrypt(const std::vector<std::vector<int>> &embeddings) const {
     if (!have_keys_) {
       throw std::runtime_error("encrypt: keys not initialized");
     }
@@ -1952,6 +1914,7 @@ public:
     error_report_t *d_report = nullptr;
     uint8_t *d_bits = nullptr;
     mem_t *d_N = nullptr, *d_N2 = nullptr, *d_out = nullptr;
+    uint32_t *d_random_words = nullptr;
 
     const int total = batch * chunk_num;
 
@@ -1985,15 +1948,14 @@ public:
       throw std::runtime_error("encrypt: noise_table size mismatch");
     }
 
-    // If seed == 0, derive a pseudo-random seed from time and simple bit-mixing
-    uint64_t actual_seed = seed;
-    if (actual_seed == 0) {
-      actual_seed = static_cast<uint64_t>(std::time(nullptr));
-      // simple scrambling to make it less predictable
-      actual_seed ^= (actual_seed << 13);
-      actual_seed ^= (actual_seed >> 7);
-      actual_seed ^= 0x9E3779B97F4A7C15ULL;
-    }
+    std::vector<uint32_t> h_random_words(
+        static_cast<size_t>(total) * static_cast<size_t>(PAILLIER_NOISE_MULTIPLES));
+    bigint::fill_os_random(h_random_words.data(), h_random_words.size() * sizeof(uint32_t));
+    CUDA_CHECK(cudaMalloc((void **)&d_random_words, h_random_words.size() * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMemcpy(d_random_words,
+                          h_random_words.data(),
+                          h_random_words.size() * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice));
 
     const int INSTS_PER_BLK = 8;
     const int THREADS = INSTS_PER_BLK * CGBN_TPI;
@@ -2011,8 +1973,8 @@ public:
                                         d_noise_table_,
                                         message_chunks,
                                         noise_table_size,
-                                        d_out,
-                                        actual_seed);
+                                        d_random_words,
+                                        d_out);
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -2022,6 +1984,7 @@ public:
     cudaFree(d_bits);
     cudaFree(d_N);
     cudaFree(d_N2);
+    cudaFree(d_random_words);
     cudaFree(d_out);
     cudaFree(d_report);
 
@@ -2041,7 +2004,7 @@ public:
   // Batched Paillier encryption of arbitrary plaintext integers m < n, using lookup tables.
   // Input: plaintexts as Python ints (converted via string), Output: ciphertexts as Python ints.
   py::list
-  encrypt_cts(const std::vector<py::int_> &plaintexts, std::uint64_t seed = 0) const {
+  encrypt_cts(const std::vector<py::int_> &plaintexts) const {
     if (!have_keys_) {
       throw std::runtime_error("encrypt_cts: keys not initialized");
     }
@@ -2091,6 +2054,7 @@ public:
     error_report_t *d_report = nullptr;
     uint8_t *d_digits = nullptr;
     mem_t *d_N = nullptr, *d_N2 = nullptr, *d_out = nullptr;
+    uint32_t *d_random_words = nullptr;
 
     CUDA_CHECK(cudaMalloc((void **)&d_report, sizeof(error_report_t)));
     CUDA_CHECK(cudaMemset(d_report, 0, sizeof(error_report_t)));
@@ -2121,14 +2085,14 @@ public:
       throw std::runtime_error("encrypt_cts: noise_table size mismatch");
     }
 
-    // Seed
-    uint64_t actual_seed = seed;
-    if (actual_seed == 0) {
-      actual_seed = static_cast<uint64_t>(std::time(nullptr));
-      actual_seed ^= (actual_seed << 13);
-      actual_seed ^= (actual_seed >> 7);
-      actual_seed ^= 0x9E3779B97F4A7C15ULL;
-    }
+    std::vector<uint32_t> h_random_words(
+        static_cast<size_t>(batch) * static_cast<size_t>(PAILLIER_NOISE_MULTIPLES));
+    bigint::fill_os_random(h_random_words.data(), h_random_words.size() * sizeof(uint32_t));
+    CUDA_CHECK(cudaMalloc((void **)&d_random_words, h_random_words.size() * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMemcpy(d_random_words,
+                          h_random_words.data(),
+                          h_random_words.size() * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice));
 
     const int INSTS_PER_BLK = 8;
     const int THREADS = INSTS_PER_BLK * CGBN_TPI;
@@ -2143,8 +2107,8 @@ public:
                                             d_g_table_,
                                             d_noise_table_,
                                             noise_table_size,
-                                            d_out,
-                                            actual_seed);
+                                            d_random_words,
+                                            d_out);
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -2154,6 +2118,7 @@ public:
     cudaFree(d_digits);
     cudaFree(d_N);
     cudaFree(d_N2);
+    cudaFree(d_random_words);
     cudaFree(d_out);
     cudaFree(d_report);
 
@@ -2168,8 +2133,7 @@ public:
   // Decrypt ciphertexts under key_a, then re-encrypt under key_b (fused GPU kernel).
   py::list decrypt_then_reencrypt(const py::sequence &ciphers,
                                   const py::dict &key_a,
-                                  const py::dict &key_b,
-                                  std::uint64_t seed = 0) const {
+                                  const py::dict &key_b) const {
     const int batch = static_cast<int>(py::len(ciphers));
     if (batch == 0) return py::list();
 
@@ -2226,6 +2190,7 @@ public:
     mem_t *d_CT = nullptr, *d_OUT = nullptr;
     mem_t *d_Na = nullptr, *d_N2a = nullptr, *d_Aa = nullptr, *d_GaInv = nullptr;
     mem_t *d_N2b = nullptr, *d_g_table = nullptr, *d_noise_table = nullptr;
+    uint32_t *d_random_words = nullptr;
 
     CUDA_CHECK(cudaMalloc((void **)&d_report, sizeof(error_report_t)));
     CUDA_CHECK(cudaMemset(d_report, 0, sizeof(error_report_t)));
@@ -2266,13 +2231,14 @@ public:
     int exp_bits_a = static_cast<int>(mpz_sizeinbase(sk_a.a.v, 2));
     if (exp_bits_a <= 0) exp_bits_a = key_len_ * 2;
 
-    uint64_t actual_seed = seed;
-    if (actual_seed == 0) {
-      actual_seed = static_cast<uint64_t>(std::time(nullptr));
-      actual_seed ^= (actual_seed << 13);
-      actual_seed ^= (actual_seed >> 7);
-      actual_seed ^= 0x9E3779B97F4A7C15ULL;
-    }
+    std::vector<uint32_t> h_random_words(
+        static_cast<size_t>(batch) * static_cast<size_t>(PAILLIER_NOISE_MULTIPLES));
+    bigint::fill_os_random(h_random_words.data(), h_random_words.size() * sizeof(uint32_t));
+    CUDA_CHECK(cudaMalloc((void **)&d_random_words, h_random_words.size() * sizeof(uint32_t)));
+    CUDA_CHECK(cudaMemcpy(d_random_words,
+                          h_random_words.data(),
+                          h_random_words.size() * sizeof(uint32_t),
+                          cudaMemcpyHostToDevice));
 
     const int INSTS_PER_BLK = 8;
     const int THREADS = INSTS_PER_BLK * CGBN_TPI;
@@ -2291,8 +2257,8 @@ public:
                                                        d_noise_table,
                                                        message_chunks,
                                                        noise_table_size,
-                                                       d_OUT,
-                                                       actual_seed);
+                                                       d_random_words,
+                                                       d_OUT);
     CUDA_CHECK(cudaPeekAtLastError());
     CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -2308,6 +2274,7 @@ public:
     cudaFree(d_N2b);
     cudaFree(d_g_table);
     cudaFree(d_noise_table);
+    cudaFree(d_random_words);
     cudaFree(d_report);
 
     py::list out(batch);
@@ -2714,16 +2681,13 @@ PYBIND11_MODULE(paillier_GPU_lookup_client, m) {
            py::arg("alpha_len") = ALPHA_LEN,
            py::arg("skip_key_gen") = false)
       .def("encrypt", &PaillierGPULookupClient::encrypt,
-           py::arg("embeddings"),
-           py::arg("seed") = 0ULL)
+           py::arg("embeddings"))
       .def("encrypt_cts", &PaillierGPULookupClient::encrypt_cts,
-           py::arg("plaintexts"),
-           py::arg("seed") = 0ULL)
+           py::arg("plaintexts"))
       .def("decrypt_then_reencrypt", &PaillierGPULookupClient::decrypt_then_reencrypt,
            py::arg("ciphers"),
            py::arg("key_a"),
-           py::arg("key_b"),
-           py::arg("seed") = 0ULL)
+           py::arg("key_b"))
       .def("encode_hamming_client", &PaillierGPULookupClient::encode_hamming_client,
            py::arg("ct1"),
            py::arg("ct2"))

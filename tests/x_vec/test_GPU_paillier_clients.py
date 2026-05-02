@@ -29,6 +29,27 @@ def _hamming(lhs: list[int], rhs: list[int]) -> int:
         pytest.param(PaillierLookupClient, "paillier_lookup", id="paillier_lookup"),
     ],
 )
+def test_consecutive_gpu_clients_generate_distinct_keypairs(
+    client_cls: type[PaillierClient] | type[PaillierLookupClient],
+    client_type: str,
+) -> None:
+    if not client_cls.has_gpu():
+        pytest.skip(f"{client_type} GPU backend is unavailable on this machine")
+
+    first = client_cls(embed_len=_EMBED_LEN, key_len=_KEY_LEN, device="gpu")
+    second = client_cls(embed_len=_EMBED_LEN, key_len=_KEY_LEN, device="gpu")
+
+    assert json.loads(first.stringify_pk()) != json.loads(second.stringify_pk())
+    assert json.loads(first.stringify_sk()) != json.loads(second.stringify_sk())
+
+
+@pytest.mark.parametrize(
+    ("client_cls", "client_type"),
+    [
+        pytest.param(PaillierClient, "paillier", id="paillier"),
+        pytest.param(PaillierLookupClient, "paillier_lookup", id="paillier_lookup"),
+    ],
+)
 def test_gpu_clients_expose_execution_context_protocol(
     client_cls: type[PaillierClient] | type[PaillierLookupClient],
     client_type: str,
