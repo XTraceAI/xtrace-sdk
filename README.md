@@ -69,6 +69,41 @@ uv pip install "xtrace-ai-sdk[embedding]"
 
 Requires Python 3.11+.
 
+## GPU acceleration (optional)
+
+The Paillier homomorphic encryption path has an optional CUDA backend that is significantly faster than the CPU implementation for large batches.
+
+**Prebuilt binaries are not currently shipped on PyPI.** To use the GPU path, compile the pybind11 extensions yourself:
+
+```bash
+# From the repo root. Requires Docker only — no local CUDA toolkit needed.
+./build_gpu_binaries.sh
+```
+
+This produces two `.so` files in place under `src/xtrace_sdk/x_vec/crypto/paillier-GPU-{,lookup-}client/`.
+
+Backend selection is automatic by default — clients probe for the GPU extension at construction time and fall back to CPU if it's unavailable. You can also force a backend explicitly:
+
+```python
+from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
+from xtrace_sdk.x_vec.utils.execution_context import ExecutionContext
+
+# Auto-detect (default): GPU if available, else CPU.
+client = PaillierClient(embed_len=512, key_len=1024)
+
+# Force a backend. device="gpu" raises if the extension is unavailable.
+client = PaillierClient(embed_len=512, key_len=1024, device="cpu")
+ctx = ExecutionContext.create(passphrase="...", device="gpu")
+```
+
+**Requirements:**
+
+- Docker (to run the build; ~10 GB for the `nvidia/cuda` devel image)
+- NVIDIA driver ≥ 550 (i.e. CUDA 12.x runtime) on the host that will execute the GPU code
+- An NVIDIA GPU with compute capability 7.0–9.0 (V100, T4, A100, RTX 30/40, H100, etc.)
+
+**Knobs (env vars on the build script):** `PYTHON_VERSION` (default `3.11`), `SMS` (GPU arch list), `KEY_BITS`, `ALPHA_LEN` (lookup variant), `CUDA_IMAGE`. See the header of [`build_gpu_binaries.sh`](./build_gpu_binaries.sh) for defaults.
+
 ## Documentation
 
 Full documentation at [docs.xtrace.ai](https://docs.xtrace.ai), or build locally:

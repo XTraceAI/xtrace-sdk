@@ -79,6 +79,8 @@ async def test_env() -> AsyncGenerator[tuple[XTraceIntegration, Retriever, str],
         org_id=os.environ["XTRACE_ORG_ID"],
         api_key=os.environ["XTRACE_API_KEY"],
         admin_key=os.environ["XTRACE_ADMIN_KEY"],
+        api_url=os.environ.get("XTRACE_API_URL", "https://api.production.xtrace.ai"),
+        admin_api_url=os.environ.get("XTRACE_ADMIN_API_URL", "https://api.xtrace.ai/api"),
     )
 
     kb = await integration.create_kb(

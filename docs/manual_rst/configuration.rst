@@ -13,15 +13,27 @@ Both ``PaillierClient`` and ``PaillierLookupClient`` run on CPU by default.
 
 .. note::
 
-    **GPU backend (internal testing phase).** XTrace maintains a GPU-accelerated implementation of the
-    homomorphic encryption layer that is approximately **20× faster** than the CPU path for large
-    embedding collections. It is available as a compiled extension that slots into the same
-    ``DEVICE=gpu`` switch — no application code changes required.
+    **GPU backend (optional).** A CUDA-accelerated implementation of the Paillier
+    and Paillier-Lookup clients is included in the source tree (``~20× faster``
+    than the CPU path on large embedding collections). It is **not** shipped
+    prebuilt on PyPI — compile it yourself with the included Docker-based build
+    script. See :doc:`install` → *GPU acceleration* for build instructions and
+    runtime requirements (NVIDIA driver ≥ 550).
 
-    The GPU implementation is not open-sourced at this time as it is under internal testing. Contact us at
-    `liwen@xtrace.ai <mailto:liwen@xtrace.ai>`_ if you are interested in access.
+Once the compiled extension is in place, the GPU backend is selected
+automatically by default — clients probe for it at construction time and fall
+back to CPU if it's unavailable. Pass ``device="cpu"`` or ``device="gpu"`` to
+force a backend (CPU and GPU clients can coexist in the same process):
 
-Set ``DEVICE=gpu`` to activate the GPU backend once the compiled extension is in place.
+.. code-block:: python
+
+    from xtrace_sdk.x_vec.crypto.paillier_client import PaillierClient
+
+    # Auto-detect: GPU if available, else CPU.
+    client = PaillierClient(embed_len=512, key_len=1024)
+
+    # Force a backend. device="gpu" raises if the extension is unavailable.
+    gpu_client = PaillierClient(embed_len=512, key_len=1024, device="gpu")
 
 **Paillier** — standard Paillier encryption:
 

@@ -4,11 +4,16 @@ on:
   pull_request:
     branches:
       - main
+    # `labeled` lets reviewers opt a PR into integration / GPU coverage by
+    # adding `run-integration` or `run-gpu` to the PR. Per-job `if:` checks
+    # the label set, so unrelated jobs still skip.
+    types: [opened, synchronize, reopened, labeled]
   push:
     branches:
       - main
       - staging
-      - develop
+    tags:
+      - 'v*'
   workflow_dispatch:  # lets you run it manually from the Actions tab
 
 concurrency:
@@ -58,12 +63,28 @@ jobs:
         run: uv run pytest tests/x_vec/test_paillier_encryption.py
 
   # ── Integration tests (require XTrace API credentials) ──────────
+  # Triggers:
+  #   - PRs: only when explicitly labeled `run-integration` (avoids quota
+  #     burn on every PR).
+  #   - Push: main / staging / v* tags (catch regressions before release).
+  #   - workflow_dispatch: manual.
+  # Fork PRs skip cleanly because GitHub does not pass secrets to forks —
+  # the test modules' `_REQUIRED` env-var check sees the empty values and
+  # skips. No global kill-switch variable needed.
   integration:
     name: Integration tests (meta search + hamming)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: qa                          # only run if qa passes
-    if: vars.XTRACE_INTEGRATION_TESTS == 'true'   # opt-in via repo variable
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && (
+            github.ref == 'refs/heads/main'
+            || github.ref == 'refs/heads/staging'
+            || startsWith(github.ref, 'refs/tags/v')
+         ))
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'run-integration'))
 
     steps:
       - name: Check out repository
@@ -82,14 +103,106 @@ jobs:
 
       - name: Pytest (test_meta_search)
         env:
-          XTRACE_API_KEY:   ${{ secrets.XTRACE_API_KEY }}
-          XTRACE_ADMIN_KEY: ${{ secrets.XTRACE_ADMIN_KEY }}
-          XTRACE_ORG_ID:    ${{ secrets.XTRACE_ORG_ID }}
+          XTRACE_API_KEY:        ${{ secrets.XTRACE_API_KEY }}
+          XTRACE_ADMIN_KEY:      ${{ secrets.XTRACE_ADMIN_KEY }}
+          XTRACE_ORG_ID:         ${{ secrets.XTRACE_ORG_ID }}
+          XTRACE_API_URL:        ${{ secrets.XTRACE_API_URL }}
+          XTRACE_ADMIN_API_URL:  ${{ secrets.XTRACE_ADMIN_API_URL }}
         run: uv run pytest tests/x_vec/test_meta_search.py -v
 
       - name: Pytest (test_hamming_search)
         env:
-          XTRACE_API_KEY:   ${{ secrets.XTRACE_API_KEY }}
-          XTRACE_ADMIN_KEY: ${{ secrets.XTRACE_ADMIN_KEY }}
-          XTRACE_ORG_ID:    ${{ secrets.XTRACE_ORG_ID }}
+          XTRACE_API_KEY:        ${{ secrets.XTRACE_API_KEY }}
+          XTRACE_ADMIN_KEY:      ${{ secrets.XTRACE_ADMIN_KEY }}
+          XTRACE_ORG_ID:         ${{ secrets.XTRACE_ORG_ID }}
+          XTRACE_API_URL:        ${{ secrets.XTRACE_API_URL }}
+          XTRACE_ADMIN_API_URL:  ${{ secrets.XTRACE_ADMIN_API_URL }}
         run: uv run pytest tests/x_vec/test_hamming_search.py -v
+
+  # ── Build GPU extensions on a free runner (Docker + nvcc, no GPU needed) ─
+  # The build script only needs Docker — nvcc runs in a pinned nvidia/cuda
+  # devel image. Splitting the build off the GPU runner keeps the paid GPU
+  # minutes for actual test execution. Same gating as gpu-tests so we only
+  # spend time building when the gpu-tests job is going to consume the .so.
+  build-gpu-extensions:
+    name: Build GPU extensions (.so via Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: qa
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && (
+            github.ref == 'refs/heads/main'
+            || github.ref == 'refs/heads/staging'
+            || startsWith(github.ref, 'refs/tags/v')
+         ))
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'run-gpu'))
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build GPU extensions
+        run: ./build_gpu_binaries.sh
+
+      - name: Upload .so artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-extensions
+          path: |
+            src/xtrace_sdk/x_vec/crypto/paillier_gpu_ext/*.so
+            src/xtrace_sdk/x_vec/crypto/paillier_lookup_gpu_ext/*.so
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── GPU tests (run on GitHub-managed partner GPU runner; paid minutes) ─
+  # Triggers:
+  #   - PRs: only when explicitly labeled `run-gpu` (paid runner — opt in).
+  #   - Push: main / staging / v* tags.
+  #   - workflow_dispatch: manual.
+  # Requires `gpu` environment with required reviewers; runner label is
+  # `gpu-runner`. Compiled .so files are produced by the build-gpu-extensions
+  # job above and downloaded into place before pytest.
+  gpu-tests:
+    name: GPU tests (paillier client)
+    runs-on: gpu-runner
+    timeout-minutes: 30
+    needs: build-gpu-extensions
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'push' && (
+            github.ref == 'refs/heads/main'
+            || github.ref == 'refs/heads/staging'
+            || startsWith(github.ref, 'refs/tags/v')
+         ))
+      || (github.event_name == 'pull_request'
+          && contains(github.event.pull_request.labels.*.name, 'run-gpu'))
+    environment: gpu
+    concurrency:
+      group: gpu-tests
+      cancel-in-progress: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install package + all dev dependencies
+        run: uv sync --all-groups
+
+      - name: Download GPU extension artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: gpu-extensions
+          path: src/xtrace_sdk/x_vec/crypto/
+
+      - name: Pytest (test_GPU_paillier_clients)
+        run: uv run pytest tests/x_vec/test_GPU_paillier_clients.py -v

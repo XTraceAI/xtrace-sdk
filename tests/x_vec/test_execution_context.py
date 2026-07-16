@@ -104,8 +104,8 @@ def test_equality_same_keys(ctx: ExecutionContext) -> None:
 
 
 def test_inequality_different_keys() -> None:
-    a = ExecutionContext.create(_PASSPHRASE, "paillier", _EMBED_LEN, _KEY_LEN)
-    b = ExecutionContext.create(_PASSPHRASE, "paillier", _EMBED_LEN, _KEY_LEN)
+    a = ExecutionContext.create(_PASSPHRASE, "paillier", _EMBED_LEN, _KEY_LEN, device="cpu")
+    b = ExecutionContext.create(_PASSPHRASE, "paillier", _EMBED_LEN, _KEY_LEN, device="cpu")
     assert a != b
 
 

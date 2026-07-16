@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 _log = logging.getLogger(__name__)
 
+from xtrace_sdk.x_vec.crypto.device import DeviceMode  # noqa: E402
 from xtrace_sdk.x_vec.crypto.encryption.aes import AESClient  # noqa: E402
 from xtrace_sdk.x_vec.crypto.key_provider import (  # noqa: E402
     KeyProvider,
@@ -47,19 +48,31 @@ def _resolve_key_provider(
     raise ValueError("Either key_provider or passphrase must be supplied.")
 
 
+def _canonical_homomorphic_type(client_name: str) -> str:
+    legacy_map = {
+        "PaillierGPUClient": "PaillierClient",
+        "PaillierLookupGPUClient": "PaillierLookupClient",
+    }
+    return legacy_map.get(client_name, client_name)
+
+
+def _canonical_json_string(value: str) -> str:
+    return json.dumps(json.loads(value), sort_keys=True, separators=(",", ":"))
+
+
 class ExecutionContext:
     """Bundles a homomorphic encryption client and an AES key under a single key-provider-protected object.
 
     An ``ExecutionContext`` is the root secret for a XTrace deployment. It holds:
 
-    - A homomorphic client (``PaillierClient`` or ``PaillierLookupClient``) whose secret key is
-      used to decrypt Hamming distances returned by the XTrace server.
+    - A homomorphic client (``PaillierClient`` or ``PaillierLookupClient``) whose secret key is used to
+      decrypt Hamming distances returned by the XTrace server.
     - An AES key supplied by a :class:`KeyProvider`, used to encrypt chunk content before upload.
 
     The secret key is **never transmitted in plaintext** — it is AES-encrypted with the
     key provider's key before any remote storage.
 
-    :param homomorphic_client: An initialised ``PaillierClient`` or ``PaillierLookupClient``.
+    :param homomorphic_client: An initialised supported homomorphic client.
     :param key_provider: A :class:`KeyProvider` that supplies the AES encryption key.
     :param context_id: Optional deterministic ID. If omitted, one is derived from a SHA-256
         hash of the public key and configuration.
@@ -84,6 +97,7 @@ class ExecutionContext:
         salt: bytes | None = None,
         path: str | None = None,
         key_provider: KeyProvider | None = None,
+        device: DeviceMode = "auto",
     ) -> "ExecutionContext":
         """Create a new execution context and optionally save it to disk.
 
@@ -98,6 +112,8 @@ class ExecutionContext:
         :param salt: Optional salt bytes for passphrase-based key derivation.
         :param path: If provided, persist the context to this file path via :meth:`save_to_disk`.
         :param key_provider: Explicit :class:`KeyProvider` instance (e.g. :class:`AWSKMSKeyProvider`).
+        :param device: ``"auto"`` (default) probes for a GPU and falls back to CPU; ``"cpu"`` and
+            ``"gpu"`` force a backend (``"gpu"`` raises if the extension is unavailable).
         :return: Initialised ``ExecutionContext``.
         :raises ValueError: If ``homomorphic_client_type`` is not recognised or
             ``embedding_length >= key_len``.
@@ -110,11 +126,11 @@ class ExecutionContext:
                 f"The Paillier-Lookup scheme requires embed_len < key_len to guarantee the padded "
                 f"plaintext fits within the RSA modulus."
             )
-        homomorphic_client: PaillierClient | PaillierLookupClient
+        homomorphic_client: HomomorphicClient
         if homomorphic_client_type.lower() == "paillier":
-            homomorphic_client = PaillierClient(embed_len=embedding_length, key_len=key_len)
+            homomorphic_client = PaillierClient(embed_len=embedding_length, key_len=key_len, device=device)
         elif homomorphic_client_type.lower() == "paillier_lookup":
-            homomorphic_client = PaillierLookupClient(embed_len=embedding_length, key_len=key_len)
+            homomorphic_client = PaillierLookupClient(embed_len=embedding_length, key_len=key_len, device=device)
         else:
             raise ValueError(f"Unsupported homomorphic client type: {homomorphic_client_type}")
         ctx = cls(homomorphic_client, provider)
@@ -167,16 +183,19 @@ class ExecutionContext:
     def hash(self) -> str:
         """Compute a deterministic SHA-256 fingerprint of this context's cryptographic identity.
 
-        The ``device`` field is excluded so that CPU and GPU contexts sharing the same keys compare
-        as equal.
+        The ``device`` field and GPU wrapper type are excluded so that CPU and GPU contexts
+        sharing the same keys compare as equal.
 
         :return: Hex-encoded SHA-256 digest.
         :rtype: str
         """
         _log.debug("Computing execution context hash...")
         data = self.to_dict_plain()
-        data['config'] = self.homomorphic.stringify_config()
-        str_data = json.dumps(data)
+        data["type"] = _canonical_homomorphic_type(data["type"])
+        data["pk"] = _canonical_json_string(data["pk"])
+        data["sk"] = _canonical_json_string(data["sk"])
+        data["config"] = _canonical_json_string(data["config"])
+        str_data = json.dumps(data, sort_keys=True, separators=(",", ":"))
         hash_obj = hashlib.sha256(str_data.encode('utf-8'))
         return hash_obj.hexdigest()
 
@@ -190,7 +209,7 @@ class ExecutionContext:
 
     def _config_with_device(self) -> str:
         cfg = json.loads(self.homomorphic.stringify_config())
-        return json.dumps(cfg)
+        return json.dumps(cfg, sort_keys=True)
 
     def serialize_exec_context(self) -> str:
         """Serialise the execution context to a JSON string suitable for storage or transmission.
@@ -201,7 +220,7 @@ class ExecutionContext:
         :rtype: str
         :raises ValueError: If the homomorphic client type is not supported.
         """
-        homomorphic_type = type(self.homomorphic).__name__
+        homomorphic_type = _canonical_homomorphic_type(type(self.homomorphic).__name__)
 
         if homomorphic_type not in SUPPORTED_HOMOMORPHIC_CLIENTS:
             raise ValueError(f"Unsupported homomorphic client type: {homomorphic_type}")
@@ -217,6 +236,7 @@ class ExecutionContext:
         passphrase: str | None = None,
         key_provider: KeyProvider | None = None,
         context_id: str | None = None,
+        device: DeviceMode = "auto",
     ) -> "ExecutionContext":
         """Reconstruct an ``ExecutionContext`` from a previously serialised dict.
 
@@ -227,6 +247,7 @@ class ExecutionContext:
         :param passphrase: Passphrase for passphrase-based contexts.
         :param key_provider: Explicit :class:`KeyProvider` to use for decryption.
         :param context_id: Optional context ID to attach; if ``None`` one is recomputed.
+        :param device: Backend to load the rebuilt client on; ``"auto"`` probes for a GPU.
         :return: Restored ``ExecutionContext``.
         :raises ValueError: If the stored homomorphic client type is not supported.
         """
@@ -244,14 +265,17 @@ class ExecutionContext:
         aes_client = AESClient(provider.get_key())
         sk = aes_client.decrypt(json_obj["sk"].encode('utf-8'))
         config = json.loads(json_obj["config"])
-        if json_obj["type"] not in SUPPORTED_HOMOMORPHIC_CLIENTS:
+        homomorphic_type = _canonical_homomorphic_type(json_obj["type"])
+        if homomorphic_type not in SUPPORTED_HOMOMORPHIC_CLIENTS:
             raise ValueError(f"Unsupported homomorphic client type: {json_obj['type']}")
 
-        concrete_client: PaillierClient | PaillierLookupClient
-        if json_obj["type"] == "PaillierLookupClient":
-            concrete_client = PaillierLookupClient(embed_len=config["embed_len"], key_len=config["key_len"], alpha_len=config["alpha_len"], skip_key_gen=True)
-        elif json_obj["type"] == "PaillierClient":
-            concrete_client = PaillierClient(embed_len=config["embed_len"], key_len=config["key_len"], skip_key_gen=True)
+        concrete_client: HomomorphicClient
+        if homomorphic_type == "PaillierLookupClient":
+            concrete_client = PaillierLookupClient(embed_len=config["embed_len"], key_len=config["key_len"], alpha_len=config["alpha_len"], skip_key_gen=True, device=device)
+        elif homomorphic_type == "PaillierClient":
+            concrete_client = PaillierClient(embed_len=config["embed_len"], key_len=config["key_len"], skip_key_gen=True, device=device)
+        else:
+            raise ValueError(f"Unsupported homomorphic client type: {json_obj['type']}")
 
         concrete_client.load_stringified_keys(json_obj['pk'], sk)
 
@@ -261,7 +285,9 @@ class ExecutionContext:
         if isinstance(concrete_client, PaillierLookupClient):
             concrete_client.load_config(config, precomputed_tables=precomputed_tables)
         else:
-            concrete_client.load_config(config)
+            load_config = getattr(concrete_client, "load_config", None)
+            if load_config is not None:
+                load_config(config)
 
         return cls(concrete_client, provider, context_id=context_id)
 
@@ -294,20 +320,21 @@ class ExecutionContext:
         passphrase: str | None = None,
         path: str = "",
         key_provider: KeyProvider | None = None,
+        device: DeviceMode = "auto",
     ) -> "ExecutionContext":
         """Load an ``ExecutionContext`` from a file previously saved with :meth:`save_to_disk`.
 
         :param passphrase: Passphrase for passphrase-based contexts.
         :param path: File path to read from.
-        :param salt: Optional salt for passphrase-based key derivation.
         :param key_provider: Explicit :class:`KeyProvider` (e.g. :class:`AWSKMSKeyProvider`).
+        :param device: Backend to load on; ``"auto"`` probes for a GPU.
         :return: Restored ``ExecutionContext``.
         """
         with open(path) as f:
             exec_context = f.read()
 
         json_obj = json.loads(exec_context)
-        return cls._from_serialized_exec_context(json_obj, passphrase=passphrase, key_provider=key_provider)
+        return cls._from_serialized_exec_context(json_obj, passphrase=passphrase, key_provider=key_provider, device=device)
 
     async def save_to_remote(self, integration: "XTraceIntegration") -> str:
         """Upload the execution context to XTrace remote storage.
@@ -328,18 +355,19 @@ class ExecutionContext:
         context_id: str = "",
         integration: "XTraceIntegration | None" = None,
         key_provider: KeyProvider | None = None,
+        device: DeviceMode = "auto",
     ) -> "ExecutionContext":
         """Fetch and decrypt an ``ExecutionContext`` from XTrace remote storage.
 
         :param passphrase: Passphrase for passphrase-based contexts.
         :param context_id: ID returned when the context was originally saved.
         :param integration: Authenticated :class:`~xtrace_sdk.integrations.xtrace.XTraceIntegration` instance.
-        :param salt: Optional salt for passphrase-based key derivation.
         :param key_provider: Explicit :class:`KeyProvider` (e.g. :class:`AWSKMSKeyProvider`).
+        :param device: Backend to load on; ``"auto"`` probes for a GPU.
         :return: Restored ``ExecutionContext``.
         """
         if integration is None:
             raise ValueError("integration is required.")
         serial_ctx = await integration.get_serialized_exec_context(context_id)
-        
-        return cls._from_serialized_exec_context(serial_ctx, key_provider=key_provider, passphrase=passphrase, context_id=str(context_id))
+
+        return cls._from_serialized_exec_context(serial_ctx, key_provider=key_provider, passphrase=passphrase, context_id=str(context_id), device=device)
